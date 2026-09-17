@@ -1,4 +1,5 @@
 import { projectColor } from './project';
+import { selectionRectFromPoints, type GridSelectionRect, type RecolorScope } from './recolor';
 import type { ArrowKind, BeadLayer, BeadProject, ClipboardPattern, CopyMode, MirrorDirection, MoveMode, RemoveMode, ShapeFillMode, ShapeKind, TextDirection, ToolId } from './types';
 
 const { useEffect, useMemo, useRef, useState } = React;
@@ -70,6 +71,9 @@ type Props = {
   onCommitStart: () => void;
   onCellsChange: (cells: Array<string | null>) => void;
   onReplaceColor: (sourceColorId: string) => void;
+  recolorScope: RecolorScope;
+  recolorSelection: GridSelectionRect | null;
+  onRecolorSelectionChange: (rect: GridSelectionRect | null) => void;
   onCopyPattern: (pattern: ClipboardPattern, switchToPaste?: boolean) => void;
   onCopySelectionChange: (indices: number[], pattern: ClipboardPattern | null) => void;
   onPastePattern: () => void;
@@ -116,6 +120,9 @@ export default function WorkspaceCanvas({
   onCommitStart,
   onCellsChange,
   onReplaceColor,
+  recolorScope,
+  recolorSelection,
+  onRecolorSelectionChange,
   onCopyPattern,
   onCopySelectionChange,
   onPastePattern,
@@ -143,6 +150,9 @@ export default function WorkspaceCanvas({
     movingPattern: false,
     draggingReference: false,
     copySelecting: false,
+    recolorSelecting: false,
+    recolorStart: { x: 0, y: 0 },
+    recolorPrevious: null as GridSelectionRect | null,
     shaping: false,
     pointerId: 0,
     lastX: 0,
@@ -168,6 +178,10 @@ export default function WorkspaceCanvas({
   });
 
   const cellSize = 18;
+  useEffect(() => {
+    pointerRef.current.recolorSelecting = false;
+    pointerRef.current.recolorPrevious = null;
+  }, [tool, recolorScope, project.width, project.height, project.activeLayerId]);
   const referenceImageOptions = useMemo<ReferenceImageRenderOptions>(
     () => ({
       image: referenceImage,
@@ -233,8 +247,8 @@ export default function WorkspaceCanvas({
     canvas.style.width = `${wrapper.clientWidth}px`;
     canvas.style.height = `${wrapper.clientHeight}px`;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawPattern(context, project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, formatColorCode);
-  }, [project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeKind, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, formatColorCode]);
+    drawPattern(context, project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, recolorScope, recolorSelection, formatColorCode);
+  }, [project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeKind, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, recolorScope, recolorSelection, formatColorCode]);
 
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -249,7 +263,7 @@ export default function WorkspaceCanvas({
       const context = canvas.getContext('2d');
       if (context) {
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
-        drawPattern(context, project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, formatColorCode);
+        drawPattern(context, project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, recolorScope, recolorSelection, formatColorCode);
       }
       setPan((current) => {
         const next = constrainPan(current, zoom);
@@ -258,7 +272,7 @@ export default function WorkspaceCanvas({
     });
     if (wrapperRef.current) observer.observe(wrapperRef.current);
     return () => observer.disconnect();
-  }, [project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeKind, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, formatColorCode]);
+  }, [project, cellSize, zoom, pan, highlightedColorId, highlightedCellIndices, tool, selectedColorId, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, shapeKind, shapeDraft, hoverPoint, canEdit, referenceImageOptions, textToolValue, textToolDirection, textToolSize, textToolSpacing, recolorScope, recolorSelection, formatColorCode]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
     const point = canvasToGridPoint(event.clientX, event.clientY);
@@ -272,6 +286,7 @@ export default function WorkspaceCanvas({
     pointerRef.current.movingPattern = false;
     pointerRef.current.draggingReference = false;
     pointerRef.current.copySelecting = false;
+    pointerRef.current.recolorSelecting = false;
     pointerRef.current.shaping = false;
     event.currentTarget.setPointerCapture(event.pointerId);
 
@@ -334,6 +349,13 @@ export default function WorkspaceCanvas({
     }
 
     if (tool === 'recolor') {
+      if (recolorScope === 'selection') {
+        pointerRef.current.recolorSelecting = true;
+        pointerRef.current.recolorStart = cell;
+        pointerRef.current.recolorPrevious = recolorSelection;
+        onRecolorSelectionChange(selectionRectFromPoints(cell, cell, project.width, project.height));
+        return;
+      }
       const sourceColorId = getTopVisibleColor(project, cell.y * project.width + cell.x);
       if (!sourceColorId || sourceColorId === selectedColorId) return;
       onReplaceColor(sourceColorId);
@@ -479,10 +501,17 @@ export default function WorkspaceCanvas({
       return;
     }
 
-    const point = canvasToGridPoint(event.clientX, event.clientY, pointerRef.current.movingPattern);
+    const point = canvasToGridPoint(event.clientX, event.clientY, pointerRef.current.movingPattern || pointerRef.current.recolorSelecting);
     const cell = point?.cell ?? null;
     setHoverPoint(point);
     onHover(cell ? { ...cell, colorId: getTopVisibleColor(project, cell.y * project.width + cell.x) } : null);
+    if (pointerRef.current.recolorSelecting) {
+      if (point && tool === 'recolor' && recolorScope === 'selection') {
+        onRecolorSelectionChange(selectionRectFromPoints(pointerRef.current.recolorStart,
+          { x: point.gridX, y: point.gridY }, project.width, project.height));
+      }
+      return;
+    }
     if (pointerRef.current.copySelecting) {
       if (cell) {
         applyCopySelection(linePoints(pointerRef.current.lastCellX, pointerRef.current.lastCellY, cell.x, cell.y));
@@ -554,6 +583,17 @@ export default function WorkspaceCanvas({
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (pointerRef.current.recolorSelecting) {
+      if (event.type === 'pointercancel') {
+        onRecolorSelectionChange(pointerRef.current.recolorPrevious);
+      } else if (tool === 'recolor' && recolorScope === 'selection') {
+        const point = canvasToGridPoint(event.clientX, event.clientY, true);
+        if (point) onRecolorSelectionChange(selectionRectFromPoints(pointerRef.current.recolorStart,
+          { x: point.gridX, y: point.gridY }, project.width, project.height));
+      }
+      pointerRef.current.recolorSelecting = false;
+      pointerRef.current.recolorPrevious = null;
+    }
     if (pointerRef.current.shaping) {
       const draft = shapeDraft ?? {
         kind: shapeKind,
@@ -582,7 +622,7 @@ export default function WorkspaceCanvas({
     pointerRef.current.copySelectionSet = new Set<number>();
     setShapeDraft(null);
     setActivePointerMode(null);
-    event.currentTarget.releasePointerCapture(pointerRef.current.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
   function handlePointerLeave() {
@@ -782,6 +822,7 @@ export default function WorkspaceCanvas({
         ref={canvasRef}
         className={canvasClassName}
         data-tool={canvasTool}
+        data-recolor-scope={tool === 'recolor' ? recolorScope : undefined}
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -832,6 +873,8 @@ function drawPattern(
   textToolDirection: TextDirection,
   textToolSize: number,
   textToolSpacing: number,
+  recolorScope: RecolorScope,
+  recolorSelection: GridSelectionRect | null,
   formatColorCode?: (colorId: string) => string,
 ): void {
   const canvasWidth = context.canvas.width / (window.devicePixelRatio || 1);
@@ -898,7 +941,7 @@ function drawPattern(
   if (tool === 'copy' && copyMode === 'selection' && copySelectionIndices.length > 0) {
     drawCopySelectionSet(context, copySelectionIndices, project.width, cellSize);
   }
-  if (hoverPoint && (canEdit || tool === 'eyedropper' || tool === 'copy')) {
+  if (hoverPoint && !(tool === 'recolor' && recolorScope === 'selection') && (canEdit || tool === 'eyedropper' || tool === 'copy')) {
     drawToolImpactPreview(context, project, tool, selectedColorId, hoverPoint, eraserSize, moveMode, removeMode, mirrorMode, clipboardPattern, copyMode, copySelectionIndices, textToolValue, textToolDirection, textToolSize, textToolSpacing, cellSize);
   }
   if (shapeDraft && canEdit) {
@@ -911,6 +954,22 @@ function drawPattern(
   if (project.settings.showGrid) drawGrid(context, project, cellSize);
   if (project.settings.showPegboardBoundaries) drawPegboardBoundaries(context, project, cellSize);
   if (project.settings.showCoordinates && cellSize * zoom > 10) drawCoordinates(context, project, cellSize);
+  if (tool === 'recolor' && recolorScope === 'selection' && recolorSelection) {
+    const { left, top, right, bottom } = recolorSelection;
+    const x = left * cellSize, y = top * cellSize;
+    const width = (right - left + 1) * cellSize, height = (bottom - top + 1) * cellSize;
+    context.save();
+    context.fillStyle = 'rgba(23, 101, 106, 0.12)';
+    context.fillRect(x, y, width, height);
+    context.lineWidth = 3 / zoom;
+    context.strokeStyle = '#fffdf7';
+    context.strokeRect(x, y, width, height);
+    context.lineWidth = 1.5 / zoom;
+    context.strokeStyle = '#17656a';
+    context.setLineDash([6 / zoom, 4 / zoom]);
+    context.strokeRect(x, y, width, height);
+    context.restore();
+  }
   if (tool === 'eraser' && hoverPoint && canEdit && eraserSize > 0) {
     drawBrushCursor(context, hoverPoint.gridX, hoverPoint.gridY, eraserSize, cellSize);
   }

@@ -1844,6 +1844,34 @@ button:focus-visible {
   top: 205px;
 }
 
+.panel-section.recolor-options {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+}
+
+.recolor-options select {
+  width: 100%;
+  min-width: 0;
+}
+
+.recolor-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recolor-target i {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(90, 78, 38, 0.3);
+  border-radius: 4px;
+}
+
+.canvas[data-tool='recolor'][data-recolor-scope='selection'] {
+  cursor: crosshair;
+}
+
 .move-options {
   top: 400px;
 }

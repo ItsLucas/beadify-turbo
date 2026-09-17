@@ -24,6 +24,7 @@ import { decodeImage, workspacePalette, workspaceResult } from './beadify/adapte
 import type { BeadPattern } from './beadify/contracts/index';
 import type { ConvertResult } from './types';
 import WorkspaceCanvas from './WorkspaceCanvas';
+import { inSelectionRect, recolorLayers, type GridSelectionRect, type RecolorScope } from './recolor';
 import ThreePreview from './ThreePreview';
 import { downloadPrintPdf, downloadPrintPng, downloadPrintSvg, downloadPreviewPng, downloadProjectJson, downloadUsageWorkbook, downloadUsageCsv, downloadUsageJson } from './exporters';
 import type { PrintExportOptions } from './exporters';
@@ -236,6 +237,19 @@ const ui: Record<Language, any> = {
         clipboardReset: '剪贴预览已重置。',
         pastedPattern: '已粘贴图案。',
         recoloredBeads: (count: number) => `已替换 ${count} 颗同色拼豆。`,
+        recolorScope: '换色范围',
+        recolorAll: '全部图纸',
+        recolorSelection: '框选区域',
+        recolorAllHint: '先在调色盘选择新颜色，再点击画布上的原颜色。作用于所有可见、未锁定图层。',
+        recolorSelectionHint: '在画布拖框，选择原颜色，再从调色盘选择新颜色。仅替换框内可见、未锁定图层的同色拼豆。可重新拖框调整范围。',
+        recolorSource: '原颜色',
+        recolorTarget: '新颜色（调色盘当前颜色）',
+        recolorEmpty: '选区内没有可替换的拼豆',
+        recolorSelectFirst: '请先在画布拖框选择区域',
+        recolorApply: '替换选区内同色',
+        recolorClear: '清除选区',
+        recolorSize: (width: number, height: number) => `已框选 ${width} × ${height} 格`,
+        recolorCount: (count: number) => `将替换 ${count} 颗拼豆`,
         brushCells: (count: number) => `${formatBrushSize(count)} 格`,
         tools: {
             pencil: { title: '画笔', hint: '绘制拼豆' },
@@ -449,6 +463,19 @@ const ui: Record<Language, any> = {
         clipboardReset: 'Clipboard preview reset.',
         pastedPattern: 'Pattern pasted.',
         recoloredBeads: (count: number) => `${count} matching beads recolored.`,
+        recolorScope: 'Recolor scope',
+        recolorAll: 'Whole pattern',
+        recolorSelection: 'Rectangle',
+        recolorAllHint: 'Choose a new palette color, then click the original color on the canvas. Affects all visible, unlocked layers.',
+        recolorSelectionHint: 'Drag a rectangle, choose the original color, then choose a new palette color. Replaces matching beads inside visible, unlocked layers only. Drag again to change the rectangle.',
+        recolorSource: 'Original color',
+        recolorTarget: 'New color (current palette color)',
+        recolorEmpty: 'No editable beads in this rectangle',
+        recolorSelectFirst: 'Drag a rectangle on the canvas first',
+        recolorApply: 'Replace inside rectangle',
+        recolorClear: 'Clear rectangle',
+        recolorSize: (width: number, height: number) => `Selected ${width} × ${height} cells`,
+        recolorCount: (count: number) => `${count} beads will be replaced`,
         brushCells: (count: number) => `${formatBrushSize(count)} cells`,
         tools: {
             pencil: { title: 'Pencil', hint: 'Paint beads' },
@@ -568,6 +595,9 @@ export default function App() {
   const [selectedColorId, setSelectedColorId] = useState(defaultColorId);
   const [recentColorIds, setRecentColorIds] = useState(defaultRecentColorIds);
   const [tool, setTool] = useState<ToolId>('pencil');
+  const [recolorScope, setRecolorScope] = useState<RecolorScope>('all');
+  const [recolorSelection, setRecolorSelection] = useState<GridSelectionRect | null>(null);
+  const [recolorSourceColorId, setRecolorSourceColorId] = useState('');
   const [eraserSize, setEraserSize] = useState(0);
   const [removeMode, setRemoveMode] = useState<RemoveMode>('same-connected');
   const [moveMode, setMoveMode] = useState<MoveMode>('layer');
@@ -862,6 +892,10 @@ export default function App() {
   }
 
   function updateProject(next: BeadProject) {
+    if (next.width !== project.width || next.height !== project.height || next.activeLayerId !== project.activeLayerId || next.createdAt !== project.createdAt || next.name !== project.name) {
+      setRecolorSelection(null);
+      setRecolorSourceColorId('');
+    }
     invalidateGeneration();
     setProject({ ...next, updatedAt: new Date().toISOString() });
   }
@@ -875,6 +909,7 @@ export default function App() {
   function activateTool(nextTool: ToolId) {
     const closingTextOptions = nextTool === 'text' && tool === 'text' && showTextOptions;
     setTool(nextTool);
+    if (nextTool === 'recolor') setRightTab('palette');
     setShowPencilOptions(nextTool === 'pencil');
     setShowEraserOptions(nextTool === 'eraser');
     setShowRemoveOptions(nextTool === 'remove');
@@ -970,21 +1005,12 @@ export default function App() {
   }
 
   function replaceColor(sourceColorId: string) {
-    if (!sourceColorId || sourceColorId === selectedColorId) return;
-    let changed = 0;
-    const visibleLayerIds = new Set(displayProject.layers.filter((layer) => layer.visible).map((layer) => layer.id));
-    const nextLayers = layers.map((layer) => {
-      if (layer.locked || !visibleLayerIds.has(layer.id)) return layer;
-      let layerChanged = false;
-      const cells = layer.cells.map((cell) => {
-        if (cell !== sourceColorId) return cell;
-        changed += 1;
-        layerChanged = true;
-        return selectedColorId;
-      });
-      return layerChanged ? { ...layer, cells } : layer;
-    });
+    if (recolorScope === 'selection' && !recolorSelection) return;
+    const { layers: recolored, changed } = recolorLayers(displayProject.layers, project.width, sourceColorId, selectedColorId,
+      recolorScope === 'selection' ? recolorSelection : null);
     if (changed === 0) return;
+    // Display visibility can differ in active-layer-only mode; preserve saved layer settings.
+    const nextLayers = layers.map((layer, index) => layer.cells === recolored[index].cells ? layer : { ...layer, cells: recolored[index].cells });
     commitHistory();
     updateProject(withLayers(project, nextLayers, project.activeLayerId));
     setNotice(text.recoloredBeads(changed));
@@ -1009,6 +1035,8 @@ export default function App() {
   }
 
   function startBlank(width = 52, height = 52) {
+    setRecolorSelection(null);
+    setRecolorSourceColorId('');
     soloVisibilitySnapshotRef.current = null;
     updateProject(createProject(width, height));
     setPast([]);
@@ -1340,6 +1368,8 @@ export default function App() {
     }
     soloVisibilitySnapshotRef.current = null;
     const restored = normalizeProject(imported);
+    setRecolorSelection(null);
+    setRecolorSourceColorId('');
     updateProject(restored);
     const settings = restored.beadify?.generationSettings;
     setSamplingStrategy(settings?.sampling?.strategy ?? ''); setUseSourceEdges(settings?.sampling?.sourceEdges ?? true);
@@ -1546,6 +1576,23 @@ export default function App() {
       cells: composeVisibleCells(displayLayers, project.width, project.height),
     };
   }, [activeLayer.id, layers, project]);
+  useEffect(() => {
+    setRecolorSelection(null);
+    setRecolorSourceColorId('');
+  }, [tool, recolorScope]);
+  const recolorColors = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (tool !== 'recolor' || recolorScope !== 'selection' || !recolorSelection) return counts;
+    for (const layer of displayProject.layers) {
+      if (!layer.visible || layer.locked) continue;
+      layer.cells.forEach((colorId, index) => {
+        if (colorId && inSelectionRect(index, project.width, recolorSelection)) counts.set(colorId, (counts.get(colorId) ?? 0) + 1);
+      });
+    }
+    return counts;
+  }, [tool, recolorScope, recolorSelection, displayProject]);
+  const effectiveRecolorSource = recolorColors.has(recolorSourceColorId) ? recolorSourceColorId : (recolorColors.keys().next().value ?? '');
+  const recolorChangeCount = effectiveRecolorSource === selectedColorId ? 0 : (recolorColors.get(effectiveRecolorSource) ?? 0);
   const shapeLabel = {
     line: text.shapeLine,
     rectangle: text.shapeRectangle,
@@ -2426,6 +2473,9 @@ export default function App() {
         }}
         onCellsChange={updateCells}
         onReplaceColor={replaceColor}
+        recolorScope={recolorScope}
+        recolorSelection={recolorSelection}
+        onRecolorSelectionChange={setRecolorSelection}
         clipboardPattern={clipboardPattern}
         copyMode={copyMode}
         copySelectionIndices={copySelectionIndices}
@@ -2515,6 +2565,42 @@ export default function App() {
           </div>
           <span className="status-pill">{text.tools[tool].title}</span>
         </section>
+
+        {tool === 'recolor' && (
+          <div className="panel-section recolor-options">
+            <div className="right-click-toggle compact" aria-label={text.recolorScope}>
+              <span>{text.recolorScope}</span>
+              <div>
+                {(['all', 'selection'] as RecolorScope[]).map(scope => (
+                  <button key={scope} type="button" className={recolorScope === scope ? 'active' : ''}
+                    aria-pressed={recolorScope === scope} onClick={() => setRecolorScope(scope)}>
+                    {scope === 'all' ? text.recolorAll : text.recolorSelection}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="tool-hint compact-hint">{recolorScope === 'all' ? text.recolorAllHint : text.recolorSelectionHint}</p>
+            {recolorScope === 'selection' && <>
+              <p className="tool-hint compact-hint" role="status">{recolorSelection
+                ? text.recolorSize(recolorSelection.right - recolorSelection.left + 1, recolorSelection.bottom - recolorSelection.top + 1)
+                : text.recolorSelectFirst}</p>
+              <label className="stacked-field">
+                <span>{text.recolorSource}</span>
+                <select aria-label={text.recolorSource} value={effectiveRecolorSource} disabled={recolorColors.size === 0} onChange={event => setRecolorSourceColorId(event.target.value)}>
+                  {recolorColors.size === 0 && <option value="">{text.recolorEmpty}</option>}
+                  {[...recolorColors].map(([colorId, count]) => <option key={colorId} value={colorId}>{displayCodeById(colorId)} · {count}</option>)}
+                </select>
+              </label>
+              <div className="stacked-field">
+                <span>{text.recolorTarget}</span>
+                <strong className="recolor-target"><i style={{ backgroundColor: projectColor(project, selectedColorId)?.hex }} />{displayCodeById(selectedColorId)}</strong>
+              </div>
+              <p className="tool-hint compact-hint">{text.recolorCount(recolorChangeCount)}</p>
+              <button type="button" disabled={recolorChangeCount === 0} onClick={() => replaceColor(effectiveRecolorSource)}>{text.recolorApply}</button>
+              <button type="button" disabled={!recolorSelection} onClick={() => { setRecolorSelection(null); setRecolorSourceColorId(''); }}>{text.recolorClear}</button>
+            </>}
+          </div>
+        )}
 
           {generationProgress && (isGenerating || candidate) && <div className="generation-progress" data-testid="generation-progress" aria-live="polite">
             <p><strong>{generationProgress.label}</strong><span>{Math.floor(generationProgress.value)}%</span></p>
