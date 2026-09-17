@@ -24,6 +24,7 @@ import { decodeImage, workspacePalette, workspaceResult } from './beadify/adapte
 import type { BeadPattern } from './beadify/contracts/index';
 import type { ConvertResult } from './types';
 import WorkspaceCanvas from './WorkspaceCanvas';
+import SourceColorPicker from './SourceColorPicker';
 import { inSelectionRect, recolorLayers, type GridSelectionRect, type RecolorScope } from './recolor';
 import ThreePreview from './ThreePreview';
 import { downloadPrintPdf, downloadPrintPng, downloadPrintSvg, downloadPreviewPng, downloadProjectJson, downloadUsageWorkbook, downloadUsageCsv, downloadUsageJson } from './exporters';
@@ -593,6 +594,8 @@ export default function App() {
   const [language, setLanguage] = useState<Language>(() => { try { return localStorage.getItem(languageKey) === 'en' ? 'en' : 'zh'; } catch { return 'zh'; } });
   const text = ui[language];
   const [selectedColorId, setSelectedColorId] = useState(defaultColorId);
+  const [showSourceColorPicker, setShowSourceColorPicker] = useState(false);
+  const [colorPickerFile, setColorPickerFile] = useState<File | null>(null);
   const [recentColorIds, setRecentColorIds] = useState(defaultRecentColorIds);
   const [tool, setTool] = useState<ToolId>('pencil');
   const [recolorScope, setRecolorScope] = useState<RecolorScope>('all');
@@ -1106,6 +1109,7 @@ export default function App() {
     }
     setSourceImage(null);
     setPendingFile(file);
+    setColorPickerFile(null);
     setPendingImageUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(file);
@@ -1648,7 +1652,7 @@ export default function App() {
         }}
       />
       <input
-        ref={referenceInputRef}
+        data-testid="reference-file" ref={referenceInputRef}
         className="hidden-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
@@ -2612,6 +2616,9 @@ export default function App() {
         {rightTab === 'palette' && (
           <section className="panel-section panel-tab-body palette-section">
             <h2>{text.palette}</h2>
+            <button type="button" className="source-color-trigger" onClick={() => setShowSourceColorPicker(true)}>
+              <ToolIcon tool="eyedropper" />{language === 'zh' ? '从原图取色' : 'Pick from source image'}
+            </button>
             <div className="palette-selected-card">
               <span style={{ backgroundColor: selectedColor?.hex }} />
               <div className="palette-selected-main">
@@ -3114,6 +3121,13 @@ export default function App() {
           </>
         )}
       </aside>
+      {showSourceColorPicker && <SourceColorPicker file={colorPickerFile ?? pendingFile ?? referenceFile} onFileChange={setColorPickerFile}
+        sourceFile={pendingFile} referenceFile={referenceFile} palette={activePalette} language={language}
+        onClose={() => setShowSourceColorPicker(false)} onSelect={colorId => {
+          selectColor(colorId);
+          setShowSourceColorPicker(false);
+          setNotice(language === 'zh' ? `已选用原图相近色 ${displayCodeById(colorId)}。` : `Selected source match ${displayCodeById(colorId)}.`);
+        }} />}
       {floatingHelp && (
         <div className="floating-help-tooltip" style={{ left: floatingHelp.left, top: floatingHelp.top }}>
           {floatingHelp.text}
