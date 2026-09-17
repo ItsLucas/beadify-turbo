@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const draft = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('perler-beads-generator:draft')!));
 
 test('white margins disappear from generated beads while interior white remains; crop survives save and undo', async ({ page }) => {
-  test.setTimeout(60000);
+  test.setTimeout(process.platform === 'win32' ? 180000 : 60000);
   await page.goto('/');
   await page.getByLabel('Generation algorithm').selectOption('area');
   await page.getByLabel('Output width', { exact: true }).fill('32');

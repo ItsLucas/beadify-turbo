@@ -128,7 +128,7 @@ test('font retyping changes only its source region and survives the Web candidat
 });
 
 
-test('default deployment exposes no AI or upload endpoints', async ({ page, request, baseURL }) => {
+test('static deployment rejects upload endpoints', async ({ page, request, baseURL }) => {
   expect(await (await request.get('/api/capabilities')).json()).toEqual({ profile: 'lite', ai: false, ocr: false, vlm: false, scene: false });
   for (const endpoint of ['/api/text/ocr', '/api/text/vlm', '/api/scene/analyze']) {
     const response = await request.post(endpoint, { data: { width: 1, height: 1, rgba: 'AAAAAA==' } });
