@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const html = `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,7 +10,7 @@ const html = `<!doctype html>
       name="description"
       content="A powerful Perler bead pattern editor for turning images into printable bead charts with MARD color matching, layers, 3D preview, and usage exports."
     />
-    <title>Perler Beads Generator</title>
+    <title>Beadify Turbo</title>
     <link rel="stylesheet" href="./styles.css" />
     <script type="importmap">
       {

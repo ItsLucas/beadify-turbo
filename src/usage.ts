@@ -1,19 +1,16 @@
-import { getColor } from './palette';
+import { composeVisibleCells, projectColor } from './project';
 import type { BeadProject, UsageRow } from './types';
 
 export function summarizeUsage(project: BeadProject): UsageRow[] {
-  const usageLayers = (project.layers ?? []).filter((layer) => layer.includeInUsage);
+  const cells = project.layers?.length ? composeVisibleCells(project.layers, project.width, project.height) : project.cells;
   const counts = new Map<string, number>();
-  for (const layer of usageLayers) {
-    for (const cell of layer.cells) {
-      if (!cell) continue;
-      counts.set(cell, (counts.get(cell) ?? 0) + 1);
-    }
+  for (const cell of cells) {
+    if (cell) counts.set(cell, (counts.get(cell) ?? 0) + 1);
   }
 
   return [...counts.entries()]
     .map(([id, count]) => {
-      const color = getColor(id);
+      const color = projectColor(project, id);
       if (!color) return null;
       return {
         color,
@@ -22,7 +19,7 @@ export function summarizeUsage(project: BeadProject): UsageRow[] {
       };
     })
     .filter((row): row is UsageRow => Boolean(row))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count || a.color.primaryCode.localeCompare(b.color.primaryCode));
 }
 
 export function findIsolatedBeads(project: BeadProject): Array<{ layerId: string; index: number }> {

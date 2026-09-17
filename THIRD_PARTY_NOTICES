@@ -1,0 +1,45 @@
+Beadify 0.5.0 — third-party notices (2026-09-17)
+
+WORKBENCH
+Derived from https://github.com/Jett-Wu/Perler_Beads_Generator
+Commit: 36ac52d570246ab600611a79edd2236bccb954e5
+Copyright (c) 2026 Jett-Wu
+MIT License: full original text is retained in LICENSE.
+Retained source: src/{App,WorkspaceCanvas,ThreePreview,imageToBeads,palette,
+project,exporters,usage,types,main,styles}, static build/server scripts.
+Changes: Beadify candidate workflow, shared CPU/Worker/CLI engine, constrained
+structure optimization, subject/detail editing, guarded project migration,
+unified visible-grid exports and a self-contained static deployment.
+Maintained fork: https://github.com/ItsLucas/beadify-turbo
+Upstream artwork in docs is omitted; its provenance was not established.
+The upstream MARD RGB table is an approximate reference, not measured data.
+Its original data-source/re-distribution permission remains unverified.
+No claim is made that a code license certifies color-data rights.
+
+BUNDLED RUNTIME
+React 18.3.1, react-dom 18.3.1 — MIT
+Copyright (c) Meta Platforms, Inc. and affiliates.
+https://github.com/facebook/react
+Three.js 0.184.0 — MIT
+Copyright (c) 2010-2026 three.js authors.
+https://github.com/mrdoob/three.js
+Their complete LICENSE files accompany generated/dist/licenses.
+
+COLOR MATH
+New TypeScript implementations based on published formulae, not copied
+Fusible source. OKLab: https://bottosson.github.io/posts/oklab/
+CIEDE2000: G. Sharma, W. Wu, E. N. Dalal (2005), supplementary test vectors:
+https://hajim.rochester.edu/ece/sites/gsharma/ciede2000/
+Sharma's 34 numeric reference cases are used for correctness checks.
+
+DEVELOPMENT TOOLS
+Exact dependency versions/integrities are recorded in package-lock.json.
+TypeScript, @types packages, tsx, json-schema-to-typescript, Ajv and
+Playwright are build/test dependencies. Their package LICENSE/NOTICE files
+are installed by npm ci; they are not browser runtime modules.
+Original synthetic benchmark fixtures are declared CC0-1.0 by this project.
+Private user photographs and derived private comparisons are excluded from Git.
+
+PUBLIC DISTRIBUTION
+The web package serves static files; image processing and editing run in the
+visitor browser. See USAGE_RIGHTS.md for material-use and contribution guidance.

@@ -1,0 +1,2075 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://beadify.local/contracts/v1",
+  "title": "BeadifyContracts",
+  "description": "Version 1 interchange contract, including optional CPU structure sampling and constrained optimization. Runtime validation checks dimensions, references and feasibility. Uint8ClampedArray is an in-memory image adapter.",
+  "anyOf": [
+    {
+      "$ref": "#/definitions/GenerationRequestJson"
+    },
+    {
+      "$ref": "#/definitions/BeadPattern"
+    },
+    {
+      "$ref": "#/definitions/Palette"
+    },
+    {
+      "$ref": "#/definitions/Bom"
+    },
+    {
+      "$ref": "#/definitions/SourceRaster"
+    },
+    {
+      "$ref": "#/definitions/TextAnalysis"
+    },
+    {
+      "$ref": "#/definitions/SceneAnalysis"
+    }
+  ],
+  "definitions": {
+    "ColorId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "Srgb8": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      }
+    },
+    "PaletteColor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "brand",
+        "series",
+        "code",
+        "srgb8"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/ColorId"
+        },
+        "brand": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "series": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "srgb8": {
+          "$ref": "#/definitions/Srgb8"
+        }
+      }
+    },
+    "Palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "source",
+        "license",
+        "approximate",
+        "colors"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "approximate": {
+          "type": "boolean"
+        },
+        "colors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/PaletteColor"
+          }
+        }
+      }
+    },
+    "RgbaImageJson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height",
+        "data"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "data": {
+          "type": "array",
+          "maxItems": 16777216,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        }
+      }
+    },
+    "GenerationRequestJson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "revision",
+        "image",
+        "width",
+        "height",
+        "palette",
+        "method",
+        "maxColors"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "image": {
+          "$ref": "#/definitions/RgbaImageJson"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "palette": {
+          "$ref": "#/definitions/Palette"
+        },
+        "method": {
+          "enum": [
+            "nearest",
+            "area",
+            "dominant",
+            "optimized"
+          ]
+        },
+        "maxColors": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "allowedColors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/ColorId"
+          }
+        },
+        "preprocessing": {
+          "$ref": "#/definitions/PreprocessingOptions"
+        },
+        "style": {
+          "enum": [
+            "accurate",
+            "clean",
+            "pixel-art",
+            "pixel-input"
+          ]
+        },
+        "constraints": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/definitions/CellConstraint"
+          }
+        },
+        "requiredColors": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/ColorId"
+          },
+          "uniqueItems": true
+        },
+        "optimization": {
+          "$ref": "#/definitions/OptimizationOptions"
+        },
+        "phase": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number",
+            "minimum": -0.49,
+            "maximum": 0.49
+          }
+        },
+        "sampling": {
+          "$ref": "#/definitions/SamplingOptions"
+        },
+        "sourceFeatures": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/SourceFeatureRegion"
+          }
+        },
+        "preparedRaster": {
+          "$ref": "#/definitions/SourceRaster"
+        }
+      }
+    },
+    "PatternGeometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceWidth",
+        "sourceHeight",
+        "fit",
+        "sourceToGrid",
+        "alphaCoverageThreshold"
+      ],
+      "properties": {
+        "sourceWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "sourceHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "fit": {
+          "const": "contain"
+        },
+        "sourceToGrid": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {
+            "type": "number"
+          }
+        },
+        "alphaCoverageThreshold": {
+          "const": 0.5
+        },
+        "crop": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          }
+        },
+        "phase": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number",
+            "minimum": -0.49,
+            "maximum": 0.49
+          }
+        },
+        "frameWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "frameHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        }
+      }
+    },
+    "PatternDiagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usedColors",
+        "physicalComponents",
+        "monochromeSingletons",
+        "colorReduction",
+        "warnings"
+      ],
+      "properties": {
+        "usedColors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 512
+        },
+        "physicalComponents": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "monochromeSingletons": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "colorReduction": {
+          "enum": [
+            "none",
+            "frequency-subpalette",
+            "optimized-subpalette"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        },
+        "optimization": {
+          "$ref": "#/definitions/OptimizationReport"
+        },
+        "diagonalContacts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 131072
+        },
+        "narrowConnections": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "sampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "multimodalCells",
+            "minorityCandidates"
+          ],
+          "properties": {
+            "multimodalCells": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            },
+            "minorityCandidates": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            }
+          }
+        }
+      }
+    },
+    "BeadPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "width",
+        "height",
+        "cells",
+        "paletteHash",
+        "paletteSnapshot",
+        "inputRevision",
+        "configHash",
+        "geometry",
+        "diagnostics"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "cells": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/ColorId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "paletteHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "paletteSnapshot": {
+          "$ref": "#/definitions/Palette"
+        },
+        "inputRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "geometry": {
+          "$ref": "#/definitions/PatternGeometry"
+        },
+        "diagnostics": {
+          "$ref": "#/definitions/PatternDiagnostics"
+        }
+      }
+    },
+    "BomRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "colorId",
+        "brand",
+        "series",
+        "code",
+        "srgb8",
+        "count"
+      ],
+      "properties": {
+        "colorId": {
+          "$ref": "#/definitions/ColorId"
+        },
+        "brand": {
+          "type": "string"
+        },
+        "series": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "srgb8": {
+          "$ref": "#/definitions/Srgb8"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "Bom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "paletteHash",
+        "totalBeads",
+        "rows"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "paletteHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "totalBeads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/BomRow"
+          }
+        }
+      }
+    },
+    "PreprocessingOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "crop": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          }
+        },
+        "background": {
+          "enum": [
+            "keep",
+            "edge"
+          ]
+        },
+        "tolerance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "mask": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 4194304,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        },
+        "smoothing": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CellConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "cellIndices"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "lock-color",
+            "lock-empty",
+            "protect",
+            "simplify",
+            "feature"
+          ]
+        },
+        "cellIndices": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "uniqueItems": true
+        },
+        "colorId": {
+          "$ref": "#/definitions/ColorId"
+        },
+        "strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "colorIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/ColorId"
+          },
+          "uniqueItems": true
+        },
+        "minCells": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "allowSingleton": {
+          "type": "boolean"
+        }
+      }
+    },
+    "OptimizationOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "maxEvaluations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000000
+        },
+        "symmetry": {
+          "type": "boolean"
+        },
+        "restarts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "weights": {
+          "$ref": "#/definitions/EnergyWeightOptions"
+        },
+        "islandMaxSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "unary": {
+          "enum": [
+            "representative",
+            "modes"
+          ]
+        },
+        "sourceComponents": {
+          "type": "boolean",
+          "description": "Use bounded soft existence constraints from original compact and thin connected components; false disables only these automatic groups for ablation."
+        },
+        "sourceShapes": {
+          "type": "boolean",
+          "description": "Use source-supported path, endpoint and interior shape conditions."
+        },
+        "sourceColors": {
+          "type": "boolean",
+          "description": "Prioritize representable chromatic source regions within the hard palette budget."
+        }
+      }
+    },
+    "EnergyTerms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "smooth",
+        "edge",
+        "island",
+        "palette",
+        "feature",
+        "symmetry",
+        "total"
+      ],
+      "properties": {
+        "color": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "smooth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "edge": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "island": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "palette": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "feature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "symmetry": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "total": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      }
+    },
+    "OptimizationReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset",
+        "initialEnergy",
+        "finalEnergy",
+        "terms",
+        "iterations",
+        "evaluations",
+        "stopReason",
+        "trace",
+        "hardConstraintsSatisfied"
+      ],
+      "properties": {
+        "preset": {
+          "enum": [
+            "accurate",
+            "clean",
+            "pixel-art"
+          ]
+        },
+        "initialEnergy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "finalEnergy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "terms": {
+          "$ref": "#/definitions/EnergyTerms"
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "evaluations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+        },
+        "stopReason": {
+          "enum": [
+            "converged",
+            "iteration-budget",
+            "evaluation-budget",
+            "empty"
+          ]
+        },
+        "trace": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "hardConstraintsSatisfied": {
+          "const": true
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/definitions/OptimizationRun"
+          }
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "bestRun": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        }
+      }
+    },
+    "SamplingOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "strategy": {
+          "enum": [
+            "dominant",
+            "mean",
+            "weighted-area",
+            "modes"
+          ]
+        },
+        "sourceEdges": {
+          "type": "boolean"
+        },
+        "crossBinStrokes": {
+          "type": "boolean",
+          "description": "Use source color and direction continuity to join strokes across color bins; false retains exact-bin evidence."
+        }
+      }
+    },
+    "SourceFeatureMask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height",
+        "runs"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 262144,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4194304
+            }
+          }
+        }
+      }
+    },
+    "SourceFeatureRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "mask",
+        "colorIds",
+        "minCells",
+        "importance",
+        "confidence",
+        "allowSingleton"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "mask": {
+          "$ref": "#/definitions/SourceFeatureMask"
+        },
+        "colorIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/ColorId"
+          },
+          "uniqueItems": true
+        },
+        "minCells": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "importance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "allowSingleton": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EnergyWeightOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "color": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "smooth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "edge": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "island": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "palette": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "feature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "symmetry": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "OptimizationRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initialization",
+        "initialEnergy",
+        "finalEnergy",
+        "evaluations",
+        "iterations",
+        "stopReason"
+      ],
+      "properties": {
+        "initialization": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "initialEnergy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "finalEnergy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "evaluations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "stopReason": {
+          "enum": [
+            "converged",
+            "iteration-budget",
+            "evaluation-budget",
+            "empty"
+          ]
+        },
+        "trace": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        }
+      }
+    },
+    "RasterColor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "L",
+        "a",
+        "b"
+      ],
+      "properties": {
+        "space": {
+          "const": "oklab"
+        },
+        "L": {
+          "type": "number",
+          "minimum": -0.001,
+          "maximum": 1.001
+        },
+        "a": {
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 0.5
+        },
+        "b": {
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 0.5
+        }
+      }
+    },
+    "RasterMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "weight"
+      ],
+      "properties": {
+        "color": {
+          "$ref": "#/definitions/RasterColor"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.000001
+        },
+        "sourceWeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "structuralSupport": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceContrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "boundarySupport": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "compactSupport": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "components": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/SourceComponentEvidence"
+          }
+        }
+      }
+    },
+    "RasterCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage",
+        "mean",
+        "representative",
+        "modes",
+        "edge",
+        "importance"
+      ],
+      "properties": {
+        "coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mean": {
+          "$ref": "#/definitions/RasterColor"
+        },
+        "representative": {
+          "$ref": "#/definitions/RasterColor"
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/definitions/RasterMode"
+          }
+        },
+        "edge": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "importance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "sourceMean": {
+          "$ref": "#/definitions/RasterColor"
+        },
+        "weightedMean": {
+          "$ref": "#/definitions/RasterColor"
+        },
+        "sourceEdge": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceContrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "edgeReliability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "samplingStrategy": {
+          "enum": [
+            "dominant",
+            "mean",
+            "weighted-area",
+            "modes"
+          ]
+        },
+        "sourceRightContrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceRightReliability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceDownContrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceDownReliability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sourceDominance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "SourceRaster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "width",
+        "height",
+        "frameWidth",
+        "frameHeight",
+        "geometry",
+        "sourceHash",
+        "inputHash",
+        "configHash",
+        "cells",
+        "features",
+        "warnings"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "frameWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "frameHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "geometry": {
+          "$ref": "#/definitions/PatternGeometry"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/RasterCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "features": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/definitions/CellConstraint"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        },
+        "sampling": {
+          "$ref": "#/definitions/SamplingOptions"
+        },
+        "algorithmVersion": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 5
+        }
+      }
+    },
+    "SourceComponentEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "coverage",
+        "support",
+        "kind",
+        "span"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4194303
+        },
+        "coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "support": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "kind": {
+          "enum": [
+            "compact",
+            "stroke",
+            "region"
+          ]
+        },
+        "span": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "endpointMask": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "closed": {
+          "type": "boolean"
+        },
+        "thickness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "TextSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rgbaHash",
+        "width",
+        "height",
+        "analysisWidth",
+        "analysisHeight",
+        "sourceToAnalysis",
+        "analysisToSource",
+        "preprocessingHash"
+      ],
+      "properties": {
+        "rgbaHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "analysisWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "analysisHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "sourceToAnalysis": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {
+            "type": "number",
+            "minimum": -1000000,
+            "maximum": 1000000
+          }
+        },
+        "analysisToSource": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {
+            "type": "number",
+            "minimum": -1000000,
+            "maximum": 1000000
+          }
+        },
+        "preprocessingHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "TextProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "version",
+        "modelHash",
+        "configHash",
+        "promptHash",
+        "device"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "fixture",
+            "manual",
+            "ocr",
+            "vlm"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "modelHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "promptHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "TextRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "parentId",
+        "polygon",
+        "granularity",
+        "role",
+        "status",
+        "transcription",
+        "detectionScore",
+        "recognitionScore",
+        "alignment",
+        "readingOrder",
+        "angle"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "parentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 16,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 4096
+            }
+          }
+        },
+        "granularity": {
+          "enum": [
+            "line",
+            "word",
+            "character",
+            "unknown"
+          ]
+        },
+        "role": {
+          "enum": [
+            "text",
+            "logo",
+            "watermark",
+            "artwork",
+            "unknown"
+          ]
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unverified",
+            "unknown"
+          ]
+        },
+        "transcription": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 512
+        },
+        "detectionScore": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recognitionScore": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment": {
+          "enum": [
+            "none",
+            "detection",
+            "recognition-estimate",
+            "manual"
+          ]
+        },
+        "readingOrder": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 127
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "angle": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "TextEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "regionId",
+        "kind",
+        "status",
+        "origin",
+        "runs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "regionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "ink",
+            "outline",
+            "shadow",
+            "background"
+          ]
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unknown"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "fixture",
+            "manual",
+            "source-extractor"
+          ]
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16384,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4194304
+            }
+          }
+        }
+      }
+    },
+    "TextSuggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "regionId",
+        "polygon",
+        "role",
+        "transcription",
+        "reason"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/definitions/TextProvider"
+        },
+        "regionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "polygon": {
+          "anyOf": [
+            {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 16,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "enum": [
+            "text",
+            "logo",
+            "watermark",
+            "artwork",
+            "unknown"
+          ]
+        },
+        "transcription": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "TextCorrection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regionId",
+        "transcription",
+        "origin"
+      ],
+      "properties": {
+        "regionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "transcription": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 512
+        },
+        "origin": {
+          "const": "manual"
+        }
+      }
+    },
+    "TextRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "evidenceIds",
+        "status"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "connected",
+            "separate",
+            "hole",
+            "open-channel"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "TextAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "source",
+        "provider",
+        "regions",
+        "suggestions",
+        "corrections",
+        "evidence",
+        "relations",
+        "rawOutput",
+        "cacheKey",
+        "contentHash"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "text-analysis"
+        },
+        "source": {
+          "$ref": "#/definitions/TextSource"
+        },
+        "provider": {
+          "$ref": "#/definitions/TextProvider"
+        },
+        "regions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/TextRegion"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/TextSuggestion"
+          }
+        },
+        "corrections": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/TextCorrection"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/TextEvidence"
+          }
+        },
+        "relations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/TextRelation"
+          }
+        },
+        "rawOutput": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 32768
+        },
+        "cacheKey": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "SceneRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "subject",
+            "detail",
+            "accessory"
+          ]
+        },
+        "box": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          }
+        },
+        "color": {
+          "enum": [
+            "dark",
+            "light",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "cyan",
+            "blue",
+            "purple",
+            "pink",
+            "brown",
+            "neutral",
+            "mixed"
+          ]
+        },
+        "importance": {
+          "enum": [
+            "normal",
+            "high"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "box",
+        "color",
+        "importance"
+      ]
+    },
+    "SceneAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "scene-analysis"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sourceWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "sourceHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "roi": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          }
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "provider": {
+          "$ref": "#/definitions/TextProvider"
+        },
+        "regions": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/definitions/SceneRegion"
+          }
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "sourceHash",
+        "sourceWidth",
+        "sourceHeight",
+        "roi",
+        "goal",
+        "summary",
+        "provider",
+        "regions",
+        "contentHash"
+      ]
+    }
+  }
+}

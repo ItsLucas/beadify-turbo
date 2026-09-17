@@ -1,10 +1,35 @@
-﻿import WorkspaceCanvas from './WorkspaceCanvas';
+import type { CoreProgress } from './beadify/core/progress';
+import TextRetypeEditor from './beadify/TextRetypeEditor';
+import { retypeTextPattern, type TextRetype } from './beadify/text-retype';
+import TextAnalysisEditor from './beadify/TextAnalysisEditor';
+import OptimizationEditor from './beadify/OptimizationEditor';
+import { matchingText } from './beadify/text-web';
+import type { TextAnalysis, OptimizationOptions } from './beadify/contracts';
+import type { TextCandidateResult } from './beadify/worker-client';
+import SubjectEditor from './beadify/SubjectEditor';
+import SourceFeatureEditor from './beadify/SourceFeatureEditor';
+import ConstraintEditor from './beadify/ConstraintEditor';
+import { prepareImage } from './beadify/core/preprocess';
+import { inspectCells, inspectConnectivity } from './beadify/core/grid';
+import { sha256 } from './beadify/core/hash';
+import { loadPalette, smoothImage } from './beadify/core/index';
+import { currentRaster, originalInputFile, parseColorCodes, remapConstraints, resizeSourceRaster, roiConstraints, sourceRoiRequest } from './beadify/workspace-generation';
+import type { CellConstraint, GenerationRequest, PreprocessingOptions, RgbaImage, SourceFeatureRegion, SourceRaster } from './beadify/contracts/index';
+import type { SavedGenerationSettings } from './types';
+import CandidatePreview from './beadify/CandidatePreview';
+import { GenerationSession } from './beadify/generation-session';
+import type { GenerationTicket } from './beadify/generation-session';
+import { GenerationWorkerClient } from './beadify/worker-client';
+import { decodeImage, workspacePalette, workspaceResult } from './beadify/adapter';
+import type { BeadPattern } from './beadify/contracts/index';
+import type { ConvertResult } from './types';
+import WorkspaceCanvas from './WorkspaceCanvas';
 import ThreePreview from './ThreePreview';
-import { downloadPrintPdf, downloadPrintPng, downloadProjectJson, downloadUsageWorkbook } from './exporters';
+import { downloadPrintPdf, downloadPrintPng, downloadPrintSvg, downloadPreviewPng, downloadProjectJson, downloadUsageWorkbook, downloadUsageCsv, downloadUsageJson } from './exporters';
 import type { PrintExportOptions } from './exporters';
 import { imageFileToBeads } from './imageToBeads';
 import { basicPalette, colorDistance, completePalette, getColor, nearestPaletteColor } from './palette';
-import { composeVisibleCells, createLayer, createProject, loadDraft, normalizeProject, saveDraft, withCells, withLayers } from './project';
+import { composeVisibleCells, createLayer, createProject, loadDraft, normalizeProject, projectColor, saveDraftWithStatus, withCells, withLayers } from './project';
 import { findIsolatedBeads, summarizeUsage } from './usage';
 import type { ArrowKind, BackgroundMode, BeadProject, ClipboardPattern, CopyMode, GenerationStyle, MirrorDirection, MoveMode, RemoveMode, RightClickAction, ShapeFillMode, ShapeKind, TextDirection, ToolId } from './types';
 
@@ -16,7 +41,7 @@ const languageKey = 'perler-beads-generator:language';
 
 const ui: Record<Language, any> = {
     zh: {
-        appName: '拼豆图纸生成器',
+        appName: 'Beadify Turbo 拼豆工作台',
         board: '拼豆板',
         apply: '应用',
         commonSizes: '常用尺寸',
@@ -36,7 +61,7 @@ const ui: Record<Language, any> = {
         exportUsageTitle: '导出用量清单 Excel',
         exportRecordTitle: '导出编辑记录 JSON',
         importRecordTitle: '导入历史记录 JSON',
-        usageExported: '用量清单 Excel 已导出。',
+        usageExported: '当前可见图纸用量已导出。',
         recordExported: '编辑记录 JSON 已导出。',
         recordImported: '编辑记录已导入，可继续编辑。',
         invalidRecord: '这个文件不是有效的拼豆编辑记录。',
@@ -82,7 +107,7 @@ const ui: Record<Language, any> = {
         keepBackground: '保留背景',
         removeWhite: '去除背景',
         preparingPattern: '正在生成图案',
-        autoGenerateHint: '调整参数后会自动更新画布。',
+        autoGenerateHint: '调整参数后生成预览，接受后添加为可撤销的新图层。',
         palette: '调色盘',
         adjustments: '调整',
         adjustmentTitle: '当前图层调整',
@@ -229,7 +254,7 @@ const ui: Record<Language, any> = {
         },
     },
     en: {
-        appName: 'Perler Beads Generator',
+        appName: 'Beadify Turbo',
         board: 'Pegboard',
         apply: 'Apply',
         commonSizes: 'Common sizes',
@@ -295,7 +320,7 @@ const ui: Record<Language, any> = {
         keepBackground: 'Keep background',
         removeWhite: 'Remove background',
         preparingPattern: 'Generating pattern',
-        autoGenerateHint: 'Changes update the canvas automatically.',
+        autoGenerateHint: 'Preview a result, then accept it as a new layer.',
         palette: 'Palette',
         adjustments: 'Adjust',
         adjustmentTitle: 'Active layer adjustment',
@@ -471,8 +496,8 @@ const sizePresets = [
 ];
 
 const defaultImportSettings = {
-  width: 52,
-  maxColors: 24,
+  width: 40,
+  maxColors: 12,
   generationStyle: 'cartoon' as GenerationStyle,
   backgroundMode: 'keep' as BackgroundMode,
   tolerance: 32,
@@ -494,6 +519,11 @@ type DragTarget = { id: string; edge: 'before' | 'after' };
 type PaletteMode = 'basic' | 'complete';
 type FloatingHelp = { text: string; left: number; top: number };
 type ReferencePlacement = 'below' | 'above';
+const SAMPLING_PHASES: { label: string; value: [number, number] }[] = [
+  { label: '居中', value: [0, 0] }, { label: '向左', value: [-0.35, 0] }, { label: '向右', value: [0.35, 0] },
+  { label: '向上', value: [0, -0.35] }, { label: '向下', value: [0, 0.35] },
+];
+type GenerationCandidate = { ticket: GenerationTicket; result: ConvertResult; pattern?: BeadPattern; mode: 'generate' | 'roi'; settings: SavedGenerationSettings; sourceRaster?: SourceRaster; textResult?: TextCandidateResult; label?: string; textRetype?: TextRetype; retypeInfo?: { changedCells: number; fontSize: number } };
 type LayerEffect = 'invert' | 'grayscale' | 'blackWhite';
 type AdjustmentSettings = {
   brightness: number;
@@ -503,17 +533,38 @@ type AdjustmentSettings = {
   hue: number;
 };
 
+function savedPaletteMode(settings?: SavedGenerationSettings): PaletteMode {
+  return (settings?.allowedColors ?? []).some(id => !basicPalette.some(color => id.endsWith(`:${color.primaryCode}`))) ? 'complete' : 'basic';
+}
+
+function savedAllowedInput(settings?: SavedGenerationSettings): string {
+  const allowed = settings?.allowedColors ?? [];
+  const palette = savedPaletteMode(settings) === 'complete' ? completePalette : basicPalette;
+  const codes = new Set(allowed.map(id => id.slice(id.lastIndexOf(':') + 1)));
+  // Blank means every color in the selected palette; a large subset still needs
+  // its explicit exclusions when the project is reopened.
+  return allowed.length === palette.length && palette.every(color => codes.has(color.primaryCode)) ? '' : allowed.join(', ');
+}
+
 export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const jsonInputRef = useRef<HTMLInputElement | null>(null);
-  const autoGenerateShouldCommitRef = useRef(false);
-  const generationRequestRef = useRef(0);
+  const [project, setProject] = useState<BeadProject>(() => loadDraft() ?? createProject());
+  const generationSession = useRef(new GenerationSession());
+  const generationTimer = useRef<number | null>(null);
+  const generationWorker = useRef(new GenerationWorkerClient());
+  const [generationMethod, setGenerationMethod] = useState<GenerationRequest['method'] | 'original'>(project.beadify?.generationSettings?.method ?? 'original');
+  const [candidate, setCandidate] = useState<GenerationCandidate | null>(null);
+  const [phaseCandidates, setPhaseCandidates] = useState<GenerationCandidate[]>([]);
+  const [textCandidates, setTextCandidates] = useState<GenerationCandidate[]>([]);
+  const [optimizationOptions, setOptimizationOptions] = useState<OptimizationOptions>(project.beadify?.generationSettings?.optimization ?? {});
+  const [crossBinStrokes, setCrossBinStrokes] = useState(project.beadify?.generationSettings?.sampling?.crossBinStrokes ?? true);
+  const skipAutoGeneration = useRef(false);
   const adjustmentSessionRef = useRef<{ layerId: string | null; baseCells: Array<string | null> }>({ layerId: null, baseCells: [] });
   const soloVisibilitySnapshotRef = useRef<Record<string, boolean> | null>(null);
-  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem(languageKey) === 'en' ? 'en' : 'zh'));
+  const [language, setLanguage] = useState<Language>(() => { try { return localStorage.getItem(languageKey) === 'en' ? 'en' : 'zh'; } catch { return 'zh'; } });
   const text = ui[language];
-  const [project, setProject] = useState<BeadProject>(() => loadDraft() ?? createProject());
   const [selectedColorId, setSelectedColorId] = useState(defaultColorId);
   const [recentColorIds, setRecentColorIds] = useState(defaultRecentColorIds);
   const [tool, setTool] = useState<ToolId>('pencil');
@@ -551,6 +602,17 @@ export default function App() {
   const [copyMode, setCopyMode] = useState<CopyMode>('connected');
   const [copySelectionIndices, setCopySelectionIndices] = useState<number[]>([]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [sourceImage, setSourceImage] = useState<RgbaImage | null>(null);
+  const [sourceFileHash, setSourceFileHash] = useState<string | null>(null);
+  const [preprocessing, setPreprocessing] = useState<PreprocessingOptions>(project.beadify?.generationSettings?.preprocessing ?? {});
+  const [coreStyle, setCoreStyle] = useState<NonNullable<GenerationRequest['style']>>(project.beadify?.generationSettings?.style ?? 'clean');
+  const [allowedInput, setAllowedInput] = useState(savedAllowedInput(project.beadify?.generationSettings));
+  const [requiredInput, setRequiredInput] = useState((project.beadify?.generationSettings?.requiredColors ?? []).join(', '));
+  const [useSymmetry, setUseSymmetry] = useState(project.beadify?.generationSettings?.optimization?.symmetry ?? false);
+  const [samplingPhase, setSamplingPhase] = useState<[number, number]>(project.beadify?.generationSettings?.phase ?? [0, 0]);
+  const [sourceFeatures, setSourceFeatures] = useState<SourceFeatureRegion[]>(project.beadify?.generationSettings?.sourceFeatures ?? []);
+  const [samplingStrategy, setSamplingStrategy] = useState<NonNullable<GenerationRequest['sampling']>['strategy'] | ''>(project.beadify?.generationSettings?.sampling?.strategy ?? '');
+  const [useSourceEdges, setUseSourceEdges] = useState(project.beadify?.generationSettings?.sampling?.sourceEdges ?? true);
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
@@ -562,12 +624,11 @@ export default function App() {
   const [referencePlacement, setReferencePlacement] = useState<ReferencePlacement>('below');
   const [canvasWidth, setCanvasWidth] = useState(project.width);
   const [canvasHeight, setCanvasHeight] = useState(project.height);
-  const [convertWidth, setConvertWidth] = useState(defaultImportSettings.width);
-  const [maxColors, setMaxColors] = useState(defaultImportSettings.maxColors);
-  const [generationStyle, setGenerationStyle] = useState<GenerationStyle>(defaultImportSettings.generationStyle);
-  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(defaultImportSettings.backgroundMode);
-  const [tolerance, setTolerance] = useState(defaultImportSettings.tolerance);
+  const [convertWidth, setConvertWidth] = useState(project.beadify?.generationSettings?.width ?? defaultImportSettings.width);
+  const [convertHeight, setConvertHeight] = useState(project.beadify?.generationSettings?.height ?? defaultImportSettings.width);
+  const [maxColors, setMaxColors] = useState(project.beadify?.generationSettings?.maxColors ?? defaultImportSettings.maxColors);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<{ taskId: number; value: number; label: string; evaluations?: number; maxEvaluations?: number } | null>(null);
   const [notice, setNotice] = useState(text.workspaceReady);
   const [floatingHelp, setFloatingHelp] = useState<FloatingHelp | null>(null);
   const [hoverCell, setHoverCell] = useState<HoverCell | null>(null);
@@ -578,7 +639,7 @@ export default function App() {
   const [editingLayerName, setEditingLayerName] = useState('');
   const [draggingLayerId, setDraggingLayerId] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<DragTarget | null>(null);
-  const [paletteMode, setPaletteMode] = useState<PaletteMode>('basic');
+  const [paletteMode, setPaletteMode] = useState<PaletteMode>(savedPaletteMode(project.beadify?.generationSettings));
   const [paletteGroup, setPaletteGroup] = useState('all');
   const [adjustments, setAdjustments] = useState<AdjustmentSettings>(defaultAdjustments);
   const [colorCleanupStrength, setColorCleanupStrength] = useState(2);
@@ -597,8 +658,9 @@ export default function App() {
     () => (showIsolatedBeads ? [...new Set(isolatedBeadRefs.map((item) => item.index))] : []),
     [isolatedBeadRefs, showIsolatedBeads],
   );
-  const selectedColor = getColor(selectedColorId);
-  const activePalette = paletteMode === 'basic' ? basicPalette : completePalette;
+  const selectedColor = projectColor(project, selectedColorId);
+  const activePalette = useMemo(() => (paletteMode === 'basic' ? basicPalette : completePalette).map(color => projectColor(project, color.id) ?? color), [paletteMode, project.beadify?.paletteSnapshot]);
+  const currentDiagnostics = useMemo(() => ({ ...inspectCells(project.cells, project.width, project.height), ...inspectConnectivity(project.cells, project.width, project.height) }), [project.cells, project.width, project.height]);
   const recentColors = recentColorIds.flatMap((id) => {
     const color = activePalette.find((item) => item.id === id);
     return color ? [color] : [];
@@ -647,7 +709,7 @@ export default function App() {
   }
 
   function displayCodeById(colorId: string): string {
-    const color = getColor(colorId);
+    const color = projectColor(project, colorId);
     return color ? displayCode(color) : '';
   }
 
@@ -692,11 +754,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    saveDraft(project);
+    const saved = saveDraftWithStatus(project);
+    if (!saved.saved) setNotice('自动保存失败，请导出项目 JSON 保存当前修改。');
+    else if (saved.textAnalysisOmitted) setNotice('图纸和编辑已保存，但容量不足，文字分析未能自动保存。请单独导出文字分析，保留手工校正和笔画标注。');
+    else if (saved.sourceRasterOmitted) setNotice('图纸和编辑已保存。受存储容量限制，原图细节记录未保存；重新打开后可选择原图恢复细节重算。');
   }, [project]);
 
   useEffect(() => {
-    localStorage.setItem(languageKey, language);
+    try { localStorage.setItem(languageKey, language); } catch { /* Project saving reports unavailable storage. */ }
   }, [language]);
 
   useEffect(() => {
@@ -737,6 +802,11 @@ export default function App() {
   }, [activePalette, paletteGroups, paletteGroup, selectedColorId]);
 
   useEffect(() => {
+    setMaxColors(current => clampInteger(current, generationMethod === 'original' ? 2 : 1, activePalette.length));
+    setLayerColorLimit(current => clampInteger(current, 2, activePalette.length));
+  }, [activePalette.length, generationMethod, maxColors, layerColorLimit]);
+
+  useEffect(() => {
     function onPaste(event: ClipboardEvent) {
       const file = [...(event.clipboardData?.files ?? [])].find((item) => item.type.startsWith('image/'));
       if (file) handleImageFile(file);
@@ -746,14 +816,45 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!pendingFile) return;
-    const timer = window.setTimeout(() => {
-      const shouldCommit = autoGenerateShouldCommitRef.current;
-      autoGenerateShouldCommitRef.current = false;
-      void generateFromImage({ recordHistory: shouldCommit, automatic: true });
-    }, 420);
-    return () => window.clearTimeout(timer);
-  }, [pendingFile, convertWidth, maxColors, generationStyle, backgroundMode, tolerance, paletteMode]);
+    let active = true;
+    setSourceImage(null);
+    setSourceFileHash(null);
+    if (pendingFile) decodeImage(pendingFile).then(async image => {
+      const digest = sha256(new Uint8Array(await pendingFile.arrayBuffer()));
+      if (!active) return;
+      const saved = project.beadify?.generationSettings;
+      const sameSource = saved?.sourceHash ? saved.sourceHash === digest : saved?.sourceName === pendingFile.name;
+      if (!sameSource) setPreprocessing({});
+      setSourceFeatures(sameSource ? saved?.sourceFeatures ?? [] : []);
+      setSourceFileHash(digest); setSourceImage(image);
+    }).catch(error => { if (active) setNotice(String(error)); });
+    return () => { active = false; };
+  }, [pendingFile]);
+
+  useEffect(() => {
+    invalidateGeneration();
+    if (skipAutoGeneration.current) { skipAutoGeneration.current = false; return; }
+    if (!pendingFile || !sourceImage) return;
+    const timer = window.setTimeout(() => { generationTimer.current = null; void generateFromImage(); }, 420);
+    generationTimer.current = timer;
+    return () => { window.clearTimeout(timer); if (generationTimer.current === timer) generationTimer.current = null; };
+  }, [pendingFile, sourceImage, preprocessing, convertWidth, convertHeight, maxColors, paletteMode, generationMethod, coreStyle, allowedInput, requiredInput, useSymmetry, samplingPhase, sourceFeatures, samplingStrategy, useSourceEdges, optimizationOptions, crossBinStrokes]);
+
+  useEffect(() => () => generationWorker.current.cancel(), []);
+
+  function clearGenerationTimer() {
+    if (generationTimer.current !== null) window.clearTimeout(generationTimer.current);
+    generationTimer.current = null;
+  }
+
+  function invalidateGeneration() {
+    clearGenerationTimer();
+    generationSession.current.invalidate();
+    generationWorker.current.cancel();
+    setCandidate(null);
+    setPhaseCandidates([]); setTextCandidates([]);
+    setIsGenerating(false); setGenerationProgress(null);
+  }
 
   function commitHistory() {
     setPast((items) => [...items.slice(-39), project]);
@@ -761,6 +862,7 @@ export default function App() {
   }
 
   function updateProject(next: BeadProject) {
+    invalidateGeneration();
     setProject({ ...next, updatedAt: new Date().toISOString() });
   }
 
@@ -790,10 +892,11 @@ export default function App() {
 
   function resetImportSettings() {
     setConvertWidth(defaultImportSettings.width);
+    setConvertHeight(defaultImportSettings.width);
+    setPreprocessing({}); setAllowedInput(''); setRequiredInput(''); setUseSymmetry(false);
+    setSamplingPhase([0, 0]); setSourceFeatures([]);
+    setSamplingStrategy(''); setUseSourceEdges(true);
     setMaxColors(defaultImportSettings.maxColors);
-    setGenerationStyle(defaultImportSettings.generationStyle);
-    setBackgroundMode(defaultImportSettings.backgroundMode);
-    setTolerance(defaultImportSettings.tolerance);
   }
 
   function resetReferenceTransform() {
@@ -892,6 +995,7 @@ export default function App() {
     if (!previous) return;
     setPast((items) => items.slice(0, -1));
     setFuture((items) => [...items, project]);
+    restoreSceneControls(previous);
     updateProject(previous);
   }
 
@@ -900,12 +1004,13 @@ export default function App() {
     if (!next) return;
     setFuture((items) => items.slice(0, -1));
     setPast((items) => [...items, project]);
+    restoreSceneControls(next);
     updateProject(next);
   }
 
   function startBlank(width = 52, height = 52) {
     soloVisibilitySnapshotRef.current = null;
-    setProject(createProject(width, height));
+    updateProject(createProject(width, height));
     setPast([]);
     setFuture([]);
     setClipboardPattern(null);
@@ -954,6 +1059,7 @@ export default function App() {
       height,
       layers: nextLayers,
       cells: composeVisibleCells(nextLayers, width, height),
+      ...(project.beadify ? { beadify: { ...project.beadify, constraints: remapConstraints(project.beadify.constraints ?? [], project.width, width, height), ...(project.beadify.sourceRaster ? { sourceRaster: resizeSourceRaster(project.beadify.sourceRaster, width, height) } : {}) } } : {}),
     });
     setNotice(language === 'zh' ? `画布已调整为 ${width} * ${height}。` : `Canvas resized to ${width} x ${height}.`);
   }
@@ -970,6 +1076,7 @@ export default function App() {
       setNotice(language === 'zh' ? '请使用 PNG、JPG、JPEG 或 WebP 图片。' : 'Use a PNG, JPG, JPEG, or WebP image.');
       return;
     }
+    setSourceImage(null);
     setPendingFile(file);
     setPendingImageUrl((current) => {
       if (current) URL.revokeObjectURL(current);
@@ -981,7 +1088,7 @@ export default function App() {
       return URL.createObjectURL(file);
     });
     resetReferenceTransform();
-    autoGenerateShouldCommitRef.current = true;
+    invalidateGeneration();
     setNotice(language === 'zh' ? `正在生成 ${file.name}...` : `Generating ${file.name}...`);
   }
 
@@ -1000,69 +1107,227 @@ export default function App() {
     setNotice(language === 'zh' ? `${file.name} 已设为参考图。` : `${file.name} set as reference image.`);
   }
 
-  async function generateFromImage(options: { recordHistory?: boolean; automatic?: boolean } = {}) {
-    if (!pendingFile) return;
-    if (activeLayer.locked) {
-      setNotice(text.lockedCanvasHint);
-      return;
-    }
-    const requestId = generationRequestRef.current + 1;
-    generationRequestRef.current = requestId;
-    const targetLayerId = activeLayer.id;
-    const sourceProject = project;
-    const sourceLayers = layers;
-    setIsGenerating(true);
-    setNotice(language === 'zh' ? '正在本地更新拼豆图案...' : 'Updating bead pattern locally...');
+  function generationPalette() {
+    const fresh = workspacePalette(activePalette), saved = project.beadify?.paletteSnapshot;
+    return loadPalette({ ...(saved ?? fresh), colors: fresh.colors.map(color => saved?.colors.find(previous => previous.brand === color.brand && previous.code === color.code) ?? color) });
+  }
+
+  function completeProjectPalette() {
+    const next = generationPalette();
+    const colors = new Map((project.beadify?.paletteSnapshot.colors ?? []).map(color => [`${color.brand}:${color.code}`, color]));
+    next.colors.forEach(color => colors.set(`${color.brand}:${color.code}`, color));
+    return loadPalette({ ...next, colors: [...colors.values()] });
+  }
+
+  function generationSettings(): SavedGenerationSettings {
+    const palette = generationPalette();
+    const allowedColors = parseColorCodes(allowedInput, palette);
+    const requiredColors = parseColorCodes(requiredInput, palette);
+    return {
+      method: generationMethod, width: convertWidth, height: convertHeight, maxColors, style: coreStyle,
+      preprocessing, sourceName: pendingFile?.name ?? project.beadify?.generationSettings?.sourceName ?? '',
+      ...(sourceFileHash ? { sourceHash: sourceFileHash } : {}),
+      allowedColors: (allowedColors.length ? allowedColors : palette.colors.map(color => color.id)) as NonNullable<GenerationRequest['allowedColors']>,
+      ...(generationMethod !== 'original' ? { phase: samplingPhase } : {}),
+      ...((generationMethod === 'dominant' || generationMethod === 'optimized') && (samplingStrategy || !useSourceEdges || !crossBinStrokes) ? { sampling: { ...(samplingStrategy ? { strategy: samplingStrategy } : {}), ...(!useSourceEdges ? { sourceEdges: false } : {}), ...(!crossBinStrokes ? { crossBinStrokes: false } : {}) } } : {}),
+      ...(generationMethod === 'optimized' ? { requiredColors, optimization: { ...optimizationOptions, symmetry: useSymmetry }, ...(sourceFeatures.length ? { sourceFeatures } : {}) } : {}),
+    };
+  }
+
+  function reportGeneration(ticket: GenerationTicket, value: number, label: string, detail?: CoreProgress) {
+    if (!generationSession.current.isCurrent(ticket)) return;
+    setGenerationProgress(previous => ({ taskId: ticket.taskId, value: Math.min(100, Math.max(previous?.taskId === ticket.taskId ? previous.value : 0, value)), label,
+      evaluations: detail?.evaluations, maxEvaluations: detail?.maxEvaluations }));
+  }
+
+  function generationReporter(ticket: GenerationTicket, offset = 0, span = 100, prefix = '') {
+    const labels: Record<CoreProgress['stage'], string> = { sampling: '采样原图与结构细节', optimizing: '优化颜色与形状', finalizing: '整理图纸和用量', 'text-evidence': '分析文字笔画结构', 'source-cache': '整理原图细节缓存', 'text-extraction': '提取原图文字笔画', complete: '当前步骤完成' };
+    return (progress: CoreProgress) => reportGeneration(ticket, offset + span * progress.completed / progress.total, prefix + labels[progress.stage], progress);
+  }
+
+  async function buildPhotoCandidate(settings: SavedGenerationSettings, ticket: GenerationTicket, offset = 0, span = 100, prefix = ''): Promise<GenerationCandidate> {
+      reportGeneration(ticket, offset, prefix + '准备原图');
+      if (!sourceImage || !sourceFileHash) throw new Error('原图尚未加载完成。');
+      const image = sourceImage, sourceHash = sourceFileHash;
+      const { sourceName: _sourceName, sourceHash: _sourceHash, method, ...config } = settings;
+      if (!Number.isInteger(convertWidth) || !Number.isInteger(convertHeight) || convertWidth < 1 || convertWidth > 256 || convertHeight < 1 || convertHeight > 256) throw new Error('输出每边须为1–256格');
+      let result: ConvertResult;
+      let pattern: BeadPattern | undefined;
+      if (method === 'original') {
+        const prepared = prepareImage(image, preprocessing);
+        const file = await originalInputFile(preprocessing.smoothing && coreStyle !== 'pixel-input' ? smoothImage(prepared.image) : prepared.image, convertWidth, convertHeight);
+        if (!generationSession.current.isCurrent(ticket)) throw new Error('Generation cancelled');
+        const palette = generationPalette();
+        const allowed = new Set(settings.allowedColors ?? palette.colors.map(c => c.id));
+        const allowedCodes = new Set(palette.colors.filter(c => allowed.has(c.id)).map(c => c.code));
+        result = await imageFileToBeads(file, { width: convertWidth, maxColors, palette: activePalette.filter(c => allowedCodes.has(c.primaryCode)), generationStyle: coreStyle === 'accurate' ? 'realistic' : 'cartoon', backgroundMode: 'keep', backgroundColor: [255, 255, 255], tolerance: 0, speckleReduction: 0 }, phase => {
+          if (!generationSession.current.isCurrent(ticket)) throw new Error('Generation cancelled');
+          const stages = { decoding: [0, '解码原图'], sampling: [1, '采样原图'], palette: [2, '选择图纸色卡'], finalizing: [3, '整理图纸'] } as const;
+          reportGeneration(ticket, offset + span * .75 * stages[phase][0] / 4, prefix + stages[phase][1]);
+        });
+      } else {
+        pattern = await generationWorker.current.generate({ schemaVersion: 1, revision: ticket.revision, image, palette: generationPalette(), method, ...config }, generationReporter(ticket, offset, span * .75, prefix));
+        result = workspaceResult(pattern);
+      }
+      if (!generationSession.current.isCurrent(ticket)) throw new Error('Generation cancelled');
+      const sourceRaster = await generationWorker.current.prepareSource({ schemaVersion: 1, revision: ticket.revision, image, palette: generationPalette(), method: method === 'original' ? 'dominant' : method, ...config, width: result.width, height: result.height }, sourceHash, generationReporter(ticket, offset + span * .75, span * .25, prefix));
+      if (!generationSession.current.isCurrent(ticket)) throw new Error('Generation cancelled');
+      return { ticket, result, pattern, mode: 'generate', settings, sourceRaster };
+  }
+
+  async function generateFromImage() {
+    clearGenerationTimer();
+    if (!pendingFile || !sourceImage) return;
+    const ticket = generationSession.current.begin();
+    generationWorker.current.cancel(); setCandidate(null); setPhaseCandidates([]); setTextCandidates([]); setIsGenerating(true); reportGeneration(ticket, 0, '准备生成任务');
+    setNotice('正在本地生成候选图案…');
     try {
-      const result = await imageFileToBeads(pendingFile, {
-        width: convertWidth,
-        maxColors,
-        palette: activePalette,
-        generationStyle,
-        backgroundMode,
-        backgroundColor: [255, 255, 255],
-        tolerance,
-        speckleReduction: defaultImportSettings.speckleReduction,
-      });
-      if (requestId !== generationRequestRef.current) return;
-      if (options.recordHistory) commitHistory();
-      const nextWidth = Math.max(sourceProject.width, result.width);
-      const nextHeight = Math.max(sourceProject.height, result.height);
-      const nextLayers = sourceLayers.map((layer) => {
-        if (layer.id === targetLayerId) {
-          return {
-            ...layer,
-            cells: resizeCells(result.cells, result.width, result.height, nextWidth, nextHeight),
-          };
-        }
-        return {
-          ...layer,
-          cells: resizeCells(layer.cells, sourceProject.width, sourceProject.height, nextWidth, nextHeight),
-        };
-      });
-      const nextProject = {
-        ...sourceProject,
-        width: nextWidth,
-        height: nextHeight,
-        activeLayerId: targetLayerId,
-        layers: nextLayers,
-        cells: composeVisibleCells(nextLayers, nextWidth, nextHeight),
-      };
-      updateProject(nextProject);
-      setNotice(
-        language === 'zh'
-          ? `${result.colorsUsed} 色 - ${result.totalBeads} 颗 - 可编辑图案已生成。`
-          : `${result.colorsUsed} colors - ${result.totalBeads} beads - editable pattern ready.`,
-      );
+      const next = await buildPhotoCandidate(generationSettings(), ticket);
+      if (!generationSession.current.isCurrent(ticket)) return;
+      setCandidate(next);
+      setNotice('候选已就绪；接受后显示新图层，旧图层保留并隐藏。');
     } catch (error) {
-      if (requestId !== generationRequestRef.current) return;
-      setNotice(error instanceof Error ? error.message : 'Could not generate this image.');
-    } finally {
-      if (requestId === generationRequestRef.current) setIsGenerating(false);
+      if (generationSession.current.isCurrent(ticket)) setNotice(error instanceof Error ? error.message : 'Generation failed');
+    } finally { if (generationSession.current.isCurrent(ticket)) setIsGenerating(false); }
+  }
+
+  function changeTextAnalysis(value: TextAnalysis | undefined) {
+    commitHistory();
+    const metadata = { ...project.beadify, schemaVersion: 1 as const, paletteSnapshot: completeProjectPalette(),
+      lastGeneration: project.beadify?.lastGeneration ?? { method: 'original' as const, inputRevision: 0, configHash: null } };
+    if (value) metadata.textAnalysis = value; else delete metadata.textAnalysis;
+    delete metadata.textAnalysisOmission;
+    updateProject({ ...project, beadify: metadata });
+  }
+
+  function restoreSceneControls(next: BeadProject) {
+    if (!project.beadify?.sceneAnalysis && !next.beadify?.sceneAnalysis) return;
+    const settings = next.beadify?.generationSettings;
+    if (settings?.sourceHash && settings.sourceHash === sourceFileHash) {
+      setPreprocessing(settings.preprocessing ?? {}); setSourceFeatures(settings.sourceFeatures ?? []); setGenerationMethod(settings.method);
     }
   }
 
+  async function compareTextCandidates(layout?: TextRetype) {
+    const analysis = project.beadify?.textAnalysis;
+    if (!sourceImage || !analysis || !matchingText(analysis, sourceImage)) return;
+    clearGenerationTimer();
+    const ticket = generationSession.current.begin();
+    generationWorker.current.cancel(); setCandidate(null); setPhaseCandidates([]); setTextCandidates([]); setIsGenerating(true); reportGeneration(ticket, 0, '准备生成任务');
+    setNotice('正在生成普通候选，然后从原图提取文字笔画并增强…');
+    try {
+      const settings: SavedGenerationSettings = { ...generationSettings(), method: 'optimized', optimization: { ...optimizationOptions, symmetry: useSymmetry },
+        requiredColors: parseColorCodes(requiredInput, generationPalette()) as NonNullable<GenerationRequest['requiredColors']>,
+        phase: samplingPhase, sourceFeatures, sampling: { ...(samplingStrategy ? { strategy: samplingStrategy } : {}), sourceEdges: useSourceEdges, crossBinStrokes } };
+      if (settings.style === 'pixel-input') throw new Error('原图已是像素画模式不执行文字增强，请选择其他图纸风格。');
+      const stepSpan = 100 / (layout ? 3 : 2);
+      const ordinary = await buildPhotoCandidate(settings, ticket, 0, stepSpan, '普通候选 · ');
+      if (!generationSession.current.isCurrent(ticket)) return;
+      const { sourceName: _name, sourceHash: _hash, method: _method, ...config } = settings;
+      const request: GenerationRequest = { schemaVersion: 1, revision: ticket.revision, image: sourceImage, palette: generationPalette(), method: 'optimized', ...config };
+      setNotice('正在从原图提取文字笔画并生成增强候选…');
+      const result = await generationWorker.current.generateText(request, analysis, ordinary.pattern, true, generationReporter(ticket, stepSpan, stepSpan, '文字增强 · '));
+      if (!generationSession.current.isCurrent(ticket)) return;
+      const baseline = { ...ordinary, label: '普通候选' }, enhanced = { ...ordinary, label: '文字增强', pattern: result.pattern, result: workspaceResult(result.pattern), textResult: result };
+      if (layout) {
+        reportGeneration(ticket, stepSpan * 2, '修复文字背景并重新排字');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (!generationSession.current.isCurrent(ticket)) return;
+        const rendered = await retypeTextPattern(ordinary.pattern!, result.analysis ?? analysis, layout, request);
+        if (!generationSession.current.isCurrent(ticket)) return;
+        const retyped: GenerationCandidate = { ...ordinary, label: '重新排字', pattern: rendered.pattern, result: workspaceResult(rendered.pattern), textRetype: layout,
+          retypeInfo: { changedCells: rendered.changedCells.length, fontSize: rendered.fontSize } };
+        reportGeneration(ticket, 100, '三份候选已完成');
+        setTextCandidates([baseline, enhanced, retyped]); setCandidate(retyped);
+        setNotice(`重排完成，自动字号约 ${rendered.fontSize.toFixed(1)} 格；修改 ${rendered.changedCells.length} 格。接受后可撤销。`);
+        return;
+      }
+      setTextCandidates([baseline, enhanced]); setCandidate(enhanced);
+      setNotice(result.status === 'UNCHANGED' ? '没有找到可安全增强的文字细节，保留普通候选。请检查区域或手动标注笔画与背景。' : `文字增强完成，修改 ${result.changedCells.length} 格。请选择候选，接受后可撤销。`);
+    } catch (error) { if (generationSession.current.isCurrent(ticket)) setNotice(error instanceof Error ? error.message : String(error)); }
+    finally { if (generationSession.current.isCurrent(ticket)) setIsGenerating(false); }
+  }
+
+  async function compareSamplingPhases() {
+    clearGenerationTimer();
+    if (!sourceImage || generationMethod === 'original') return;
+    const ticket = generationSession.current.begin();
+    generationWorker.current.cancel(); setCandidate(null); setPhaseCandidates([]); setTextCandidates([]); setIsGenerating(true); reportGeneration(ticket, 0, '准备生成任务');
+    try {
+      const settings = generationSettings(), results: GenerationCandidate[] = [];
+      for (const phase of SAMPLING_PHASES) {
+        setNotice(`正在比较网格位置 ${results.length + 1} / ${SAMPLING_PHASES.length}…`);
+        results.push(await buildPhotoCandidate({ ...settings, phase: phase.value }, ticket, results.length * 100 / SAMPLING_PHASES.length, 100 / SAMPLING_PHASES.length, `网格候选 ${results.length + 1} / ${SAMPLING_PHASES.length} · `));
+        if (!generationSession.current.isCurrent(ticket)) return;
+      }
+      setPhaseCandidates(results);
+      setCandidate(results.find(result => result.settings.phase?.every((value, index) => value === samplingPhase[index])) ?? results[0]);
+      setNotice('五个网格位置已就绪；选择保留细节较好的版本后接受。');
+    } catch (error) { if (generationSession.current.isCurrent(ticket)) setNotice(error instanceof Error ? error.message : String(error)); }
+    finally { if (generationSession.current.isCurrent(ticket)) setIsGenerating(false); }
+  }
+
+  async function recalculateRegion(indices: number[], source: 'source' | 'pattern') {
+    if (!indices.length) return;
+    clearGenerationTimer();
+    const ticket = generationSession.current.begin();
+    setCandidate(null); setPhaseCandidates([]); setTextCandidates([]); setIsGenerating(true); reportGeneration(ticket, 0, '准备生成任务');
+    try {
+      const palette = generationPalette();
+      const allowedColors = parseColorCodes(allowedInput, palette);
+      const requiredColors = parseColorCodes(requiredInput, palette);
+      const settings: SavedGenerationSettings = { method: 'optimized', width: project.width, height: project.height, maxColors, style: coreStyle, sourceName: 'current-pattern', allowedColors: (allowedColors.length ? allowedColors : palette.colors.map(color => color.id)) as NonNullable<GenerationRequest['allowedColors']>, requiredColors, optimization: { ...optimizationOptions, symmetry: useSymmetry } };
+      const { sourceName: _sourceName, sourceHash: _sourceHash, method: _method, ...config } = settings;
+      const request = source === 'source' ? { ...sourceRoiRequest(project, palette, indices, config), revision: ticket.revision }
+        : { schemaVersion: 1 as const, revision: ticket.revision, image: currentRaster(project), palette, method: 'optimized' as const, ...config, constraints: roiConstraints(project, palette, indices) };
+      const pattern = await generationWorker.current.generate(request, generationReporter(ticket, 0, 100, '局部重算 · '));
+      if (!generationSession.current.isCurrent(ticket)) return;
+      setCandidate({ ticket, result: workspaceResult(pattern), pattern, mode: 'roi', settings });
+      setNotice('选区重算已完成；选区外锁定。接受后生效。');
+    } catch (error) { if (generationSession.current.isCurrent(ticket)) setNotice(error instanceof Error ? error.message : String(error)); }
+    finally { if (generationSession.current.isCurrent(ticket)) setIsGenerating(false); }
+  }
+
+  function updateConstraints(constraints: CellConstraint[]) {
+    commitHistory();
+    updateProject({ ...project, beadify: { ...project.beadify, schemaVersion: 1, paletteSnapshot: completeProjectPalette(), lastGeneration: project.beadify?.lastGeneration ?? { method: 'original', inputRevision: 0, configHash: null }, constraints } });
+  }
+
+  function acceptCandidate() {
+    if (!candidate || !generationSession.current.isCurrent(candidate.ticket)) return;
+    const { result, pattern } = candidate;
+    const hasExisting = layers.some(layer => layer.cells.some(cell => cell !== null));
+    const width = candidate.mode === 'roi' ? project.width : hasExisting ? Math.max(project.width, result.width) : result.width;
+    const height = candidate.mode === 'roi' ? project.height : hasExisting ? Math.max(project.height, result.height) : result.height;
+    const nextLayers = layers.map(layer => ({ ...layer, visible: false, cells: resizeCells(layer.cells, project.width, project.height, width, height) }));
+    const added = createLayer(width, height, `Beadify ${candidate.label ?? candidate.settings.method}`);
+    added.cells = resizeCells(result.cells, result.width, result.height, width, height); nextLayers.push(added);
+    if (candidate.mode === 'generate' && candidate.settings.method !== generationMethod) {
+      skipAutoGeneration.current = true; setGenerationMethod(candidate.settings.method);
+    }
+    if (candidate.mode === 'generate' && candidate.settings.phase && !candidate.settings.phase.every((value, index) => value === samplingPhase[index])) {
+      skipAutoGeneration.current = true; setSamplingPhase(candidate.settings.phase);
+    }
+    commitHistory();
+    updateProject({ ...project, width, height, layers: nextLayers, activeLayerId: added.id, cells: composeVisibleCells(nextLayers, width, height), beadify: {
+      schemaVersion: 1, paletteSnapshot: completeProjectPalette(),
+      ...(project.beadify?.sceneAnalysis ? { sceneAnalysis: project.beadify.sceneAnalysis } : {}),
+      ...(candidate.textResult?.analysis ? { textAnalysis: candidate.textResult.analysis } : project.beadify?.textAnalysis ? { textAnalysis: project.beadify.textAnalysis } : project.beadify?.textAnalysisOmission ? { textAnalysisOmission: project.beadify.textAnalysisOmission } : {}),
+      ...(candidate.textRetype ? { textRetype: candidate.textRetype } : project.beadify?.textRetype ? { textRetype: project.beadify.textRetype } : {}),
+      lastGeneration: { method: candidate.settings.method, inputRevision: candidate.ticket.revision, configHash: pattern?.configHash ?? null },
+      generationSettings: candidate.mode === 'roi' ? project.beadify?.generationSettings ?? candidate.settings : candidate.settings,
+      constraints: candidate.mode === 'roi' ? project.beadify?.constraints ?? [] : [],
+      ...(candidate.mode === 'roi' ? project.beadify?.sourceRaster ? { sourceRaster: project.beadify.sourceRaster } : {} : candidate.sourceRaster ? { sourceRaster: resizeSourceRaster(candidate.sourceRaster, width, height) } : {}),
+      ...(candidate.mode === 'roi' && !project.beadify?.sourceRaster && project.beadify?.sourceRasterOmission ? { sourceRasterOmission: project.beadify.sourceRasterOmission } : {}),
+    } });
+    setCanvasWidth(width); setCanvasHeight(height);
+    setNotice('已显示候选图层。旧图层已隐藏，可撤销或在图层中恢复。');
+  }
+
+  function exportVisibleBom() { downloadUsageCsv(project); }
+
   async function importJson(file: File) {
+    if (file.size > 20 * 1024 * 1024) throw new Error('Project JSON exceeds 20 MiB');
     let imported: BeadProject;
     try {
       const text = await file.text();
@@ -1074,7 +1339,18 @@ export default function App() {
       throw new Error(text.invalidRecord);
     }
     soloVisibilitySnapshotRef.current = null;
-    setProject(normalizeProject(imported));
+    const restored = normalizeProject(imported);
+    updateProject(restored);
+    const settings = restored.beadify?.generationSettings;
+    setSamplingStrategy(settings?.sampling?.strategy ?? ''); setUseSourceEdges(settings?.sampling?.sourceEdges ?? true);
+    setOptimizationOptions(settings?.optimization ?? {}); setCrossBinStrokes(settings?.sampling?.crossBinStrokes ?? true);
+    if (settings) {
+      setGenerationMethod(settings.method); setConvertWidth(settings.width); setConvertHeight(settings.height); setMaxColors(settings.maxColors);
+      setPreprocessing(settings.preprocessing ?? {}); setCoreStyle(settings.style ?? 'clean');
+      setSamplingPhase(settings.phase ?? [0, 0]); setSourceFeatures(settings.sourceFeatures ?? []);
+      setAllowedInput(savedAllowedInput(settings)); setPaletteMode(savedPaletteMode(settings)); setRequiredInput((settings.requiredColors ?? []).join(', ')); setUseSymmetry(settings.optimization?.symmetry ?? false);
+    }
+    setCanvasWidth(restored.width); setCanvasHeight(restored.height);
     setPast([]);
     setFuture([]);
     setPendingFile(null);
@@ -1082,7 +1358,7 @@ export default function App() {
       if (current) URL.revokeObjectURL(current);
       return null;
     });
-    setNotice(text.recordImported);
+    setNotice(restored.beadify?.textAnalysisOmission ? '编辑记录已导入。文件未包含文字分析；可导入单独的分析记录或重新分析原图。' : restored.beadify?.sourceRasterOmission ? '编辑记录已导入。文件未包含原图细节记录；选择原图可恢复细节重算。' : text.recordImported);
   }
 
   function exportUsageList() {
@@ -1091,8 +1367,10 @@ export default function App() {
   }
 
   function exportEditRecord() {
-    downloadProjectJson(project);
-    setNotice(text.recordExported);
+    try {
+      const saved = downloadProjectJson(project);
+      setNotice(saved.textAnalysisOmitted ? '图纸和编辑已导出。受文件容量限制，文字分析未附带；请单独导出文字分析保留标注。' : saved.sourceRasterOmitted ? '编辑记录已导出。为控制文件大小，未附带原图细节记录；图纸、图层和规则均已保留。' : text.recordExported);
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
   }
 
   function resetClipboard() {
@@ -1141,26 +1419,6 @@ export default function App() {
     updateProject(withLayers(project, layers.map((layer) => (layer.id === layerId ? { ...layer, ...changes } : layer))));
   }
 
-  function updateUsageLayerSelection(includedLayerIds: Set<string>) {
-    const nextLayers = layers.map((layer) => ({
-      ...layer,
-      includeInUsage: includedLayerIds.has(layer.id),
-    }));
-    const changed = nextLayers.some((layer, index) => layer.includeInUsage !== layers[index].includeInUsage);
-    if (!changed) return;
-    commitHistory();
-    updateProject(withLayers(project, nextLayers, project.activeLayerId));
-  }
-
-  function toggleUsageLayer(layerId: string) {
-    const includedLayerIds = new Set(countedLayers.map((layer) => layer.id));
-    if (includedLayerIds.has(layerId)) {
-      includedLayerIds.delete(layerId);
-    } else {
-      includedLayerIds.add(layerId);
-    }
-    updateUsageLayerSelection(includedLayerIds);
-  }
 
   function toggleActiveLayerOnly() {
     const shouldEnable = !project.settings.showActiveLayerOnly;
@@ -1269,7 +1527,6 @@ export default function App() {
 
   const layers = project.layers?.length ? project.layers : createProject(project.width, project.height).layers;
   const activeLayer = layers.find((layer) => layer.id === project.activeLayerId) ?? layers[0];
-  const countedLayers = layers.filter((layer) => layer.includeInUsage);
   useEffect(() => {
     setCopySelectionIndices([]);
     setAdjustments(defaultAdjustments);
@@ -1310,18 +1567,16 @@ export default function App() {
     return language === 'zh' ? `拼豆图纸_${stamp}` : `Perler_Beads_${stamp}`;
   }, [language]);
 
-  function exportPrintPattern() {
-    const exportOptions = {
-      ...printExportOptions,
-      projectName: printExportOptions.projectName?.trim() || defaultPrintNickname,
-      layerLabelPrefix: language === 'en' ? 'Layer' : '图层',
-    };
-    if (printExportOptions.format === 'pdf') {
-      downloadPrintPdf(project, exportOptions);
-    } else {
-      downloadPrintPng(project, exportOptions);
-    }
-    setShowPrintExportPanel(false);
+  async function exportPrintPattern() {
+    const options = { ...printExportOptions, projectName: printExportOptions.projectName?.trim() || defaultPrintNickname };
+    try {
+      if (options.format === 'pdf') await downloadPrintPdf(project, options);
+      else if (options.format === 'svg') downloadPrintSvg(project, options);
+      else if (options.format === 'preview') await downloadPreviewPng(project, options);
+      else await downloadPrintPng(project, options);
+      setShowPrintExportPanel(false);
+      setNotice('已导出当前可见图纸。PDF请按100%打印并核对校准尺。');
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
   }
 
   return (
@@ -1335,7 +1590,7 @@ export default function App() {
       }}
     >
       <input
-        ref={fileInputRef}
+        data-testid="generation-file" ref={fileInputRef}
         className="hidden-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
@@ -1357,7 +1612,7 @@ export default function App() {
         }}
       />
       <input
-        ref={jsonInputRef}
+        data-testid="project-file" ref={jsonInputRef}
         className="hidden-input"
         type="file"
         accept="application/json,.json"
@@ -1439,10 +1694,10 @@ export default function App() {
                       <select
                         className="export-format-select"
                         value={printExportOptions.format ?? 'png'}
-                        onChange={(event) => setPrintExportOptions((current) => ({ ...current, format: event.target.value as 'png' | 'pdf' }))}
+                        onChange={(event) => setPrintExportOptions((current) => ({ ...current, format: event.target.value as PrintExportOptions['format'] }))}
                       >
                         <option value="png">PNG</option>
-                        <option value="pdf">PDF</option>
+                        <option value="pdf">PDF（分页打印）</option><option value="svg">SVG（矢量图纸）</option><option value="preview">PNG（无网格预览）</option>
                       </select>
                     </label>
                     <label className="export-text-field">
@@ -1488,12 +1743,19 @@ export default function App() {
                         onChange={(event) => setPrintExportOptions((current) => ({ ...current, showGuideLines: event.target.checked }))}
                       />
                     </label>
-                    <button className="export-submit-button" onClick={exportPrintPattern}>
+                    <label className="export-text-field"><span>纸张</span><select aria-label="Print paper" value={printExportOptions.paperSize ?? 'a4'} onChange={e => setPrintExportOptions(current => ({ ...current, paperSize: e.target.value as 'a4' | 'letter' }))}><option value="a4">A4</option><option value="letter">Letter</option></select></label>
+                    <label className="export-text-field"><span>格间距（毫米）</span><input aria-label="Bead pitch mm" type="number" min={2} max={10} step={.1} value={printExportOptions.pitchMm ?? 5} onChange={e => setPrintExportOptions(current => ({ ...current, pitchMm: Number(e.target.value) }))} /></label>
+                    <label className="switch-row"><span>水平镜像</span><input aria-label="Mirror export" type="checkbox" checked={printExportOptions.mirror ?? false} onChange={e => setPrintExportOptions(current => ({ ...current, mirror: e.target.checked }))} /></label>
+                    <label className="export-text-field"><span>分页重叠格数</span><select aria-label="Page overlap" value={printExportOptions.overlapCells ?? 1} onChange={e => setPrintExportOptions(current => ({ ...current, overlapCells: Number(e.target.value) }))}>{[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+                    <p className="beadify-hint">请按100%打印，核对50毫米校准尺和实际拼豆板间距。</p>
+                    <button className="export-submit-button" onClick={() => void exportPrintPattern()}>
                       {text.exportNow} {(printExportOptions.format ?? 'png').toUpperCase()}
                     </button>
                   </div>
                 )}
               </div>
+              <button className="export-action-button" onClick={exportVisibleBom}>{language === 'zh' ? '可见图纸 BOM' : 'Visible pattern BOM'}</button>
+              <button className="export-action-button" onClick={() => downloadUsageJson(project)}>BOM JSON</button>
               <button className="export-action-button" title={text.exportUsageTitle} onClick={exportUsageList}>{text.exportUsageFull}</button>
               <button className="export-action-button" title={text.exportRecordTitle} onClick={exportEditRecord}>{text.exportRecordFull}</button>
               <button className="export-action-button" title={text.importRecordTitle} onClick={() => jsonInputRef.current?.click()}>{text.importRecordFull}</button>
@@ -1504,7 +1766,7 @@ export default function App() {
         <div className="topbar-right">
           <a
             className="github-link"
-            href="https://github.com/Jett-Wu/Perler_Beads_Generator"
+            href="https://github.com/ItsLucas/beadify-turbo"
             target="_blank"
             rel="noreferrer"
             aria-label="GitHub"
@@ -1538,7 +1800,7 @@ export default function App() {
           />
         </section>
 
-        <section className="left-card image-card">
+        <section className="left-card image-card" data-testid="image-generation">
           <div className="left-card-header">
             <div>
               <strong className="field-label-with-help">
@@ -1557,57 +1819,117 @@ export default function App() {
             </span>
           </button>
 
+          <p className="beadify-hint">{language === 'zh' ? '请使用你有权使用的图片；转换图纸不授予原作品的商业使用许可。' : 'Use images you have the right to use; conversion does not grant commercial rights to the source artwork.'} <a href="https://github.com/ItsLucas/beadify-turbo/blob/main/USAGE_RIGHTS.md" target="_blank" rel="noreferrer">{language === 'zh' ? '素材说明' : 'Usage rights'}</a></p>
+
+          <label className="stacked-field">
+            <span>{language === 'zh' ? '生成算法' : 'Algorithm'}</span>
+            <select aria-label="Generation algorithm" value={generationMethod} onChange={(event) => { invalidateGeneration(); setGenerationMethod(event.target.value as typeof generationMethod); if (event.target.value === 'original') { setMaxColors(Math.max(2, maxColors)); if (coreStyle === 'pixel-input') setCoreStyle('clean'); } }}>
+              <option value="optimized">Turbo · 结构优化</option>
+              <option value="dominant">Turbo · 主导色采样</option>
+              <option value="area">Turbo · {language === 'zh' ? '面积采样' : 'Area'}</option>
+              <option value="nearest">Turbo · {language === 'zh' ? '最近邻' : 'Nearest'}</option>
+              <option value="original">{language === 'zh' ? '原版算法' : 'Original algorithm'}</option>
+            </select>
+          </label>
+          {sourceImage && <SubjectEditor image={sourceImage} value={preprocessing} onChange={value => { invalidateGeneration(); setPreprocessing(value); }} disabled={isGenerating} />}
+          <p className="beadify-hint" data-testid="lite-profile">图片和图纸在当前设备处理，支持手工标注与编辑。</p>
+          {sourceImage && <SourceFeatureEditor image={sourceImage} palette={generationPalette()} value={sourceFeatures} selectedColorId={projectColor(project, selectedColorId)?.primaryCode ?? selectedColorId}
+            onChange={value => { invalidateGeneration(); setSourceFeatures(value); setGenerationMethod('optimized'); }} disabled={isGenerating} />}
+          {!sourceImage && project.beadify?.generationSettings?.sourceName && <p className="beadify-hint">项目可直接编辑、导出和局部重算。重新选择原图可调整主体并再次生成。</p>}
+          <TextAnalysisEditor image={sourceImage} value={project.beadify?.textAnalysis} disabled={isGenerating} onChange={changeTextAnalysis} onGenerate={() => void compareTextCandidates()} />
+          <TextRetypeEditor analysis={project.beadify?.textAnalysis} palette={generationPalette()} saved={project.beadify?.textRetype}
+            disabled={isGenerating || !sourceImage || !project.beadify?.textAnalysis || !matchingText(project.beadify.textAnalysis, sourceImage)} onGenerate={layout => void compareTextCandidates(layout)} />
+          <OptimizationEditor value={optimizationOptions} crossBin={crossBinStrokes} disabled={generationMethod !== 'optimized' || isGenerating}
+            onChange={value => { invalidateGeneration(); setOptimizationOptions(value); }} onCrossBin={value => { invalidateGeneration(); setCrossBinStrokes(value); }} />
+          <label className="stacked-field"><span>图纸风格</span><select aria-label="Pattern style" disabled={generationMethod === 'area' || generationMethod === 'nearest'} value={coreStyle} onChange={e => { invalidateGeneration(); setCoreStyle(e.target.value as typeof coreStyle); }}>
+            <option value="clean">简洁色块</option><option value="accurate">保留色阶</option><option value="pixel-art">像素画</option><option value="pixel-input" disabled={generationMethod === 'original'}>原图已是像素画</option>
+          </select></label>
+          <details className="beadify-advanced"><summary>色卡与重算选项</summary>
+            <label>区域采样策略<select aria-label="Sampling strategy" disabled={generationMethod === 'original' || generationMethod === 'area' || generationMethod === 'nearest'} value={samplingStrategy ?? ''} onChange={event => { invalidateGeneration(); setSamplingStrategy(event.target.value as typeof samplingStrategy); }}>
+              <option value="">自动（按图纸风格）</option><option value="modes">多模式保留</option><option value="dominant">主导颜色</option><option value="mean">面积均值</option><option value="weighted-area">边缘加权面积</option>
+            </select></label>
+            <label><span>参考原图边缘细节</span><input aria-label="Source edge evidence" type="checkbox" disabled={generationMethod === 'original' || generationMethod === 'area' || generationMethod === 'nearest'} checked={useSourceEdges} onChange={event => { invalidateGeneration(); setUseSourceEdges(event.target.checked); }} /></label>
+            <label><span>轻量去纹理（像素原图模式自动跳过）</span><input aria-label="Texture smoothing" type="checkbox" checked={preprocessing.smoothing ?? false} onChange={e => { invalidateGeneration(); setPreprocessing(current => ({ ...current, smoothing: e.target.checked })); }} /></label>
+            <label>仅使用这些色号（留空为全部）<input aria-label="Allowed colors" type="text" value={allowedInput} placeholder="A1, A8, H2, H7" onChange={e => { invalidateGeneration(); setAllowedInput(e.target.value); }} /></label>
+            <label>成品必须包含（结构优化）<input aria-label="Required colors" type="text" disabled={generationMethod !== 'optimized'} value={requiredInput} placeholder="H2, H7" onChange={e => { invalidateGeneration(); setRequiredInput(e.target.value); }} /></label>
+            <label><span>近似左右对称（结构优化，默认关闭）</span><input aria-label="Symmetry" type="checkbox" disabled={generationMethod !== 'optimized'} checked={useSymmetry} onChange={e => { invalidateGeneration(); setUseSymmetry(e.target.checked); }} /></label>
+          </details>
+          <label className="stacked-field"><span>采样网格位置</span><select aria-label="采样网格位置" disabled={generationMethod === 'original' || isGenerating} value={samplingPhase.join(',')} onChange={event => { invalidateGeneration(); setSamplingPhase(event.target.value.split(',').map(Number) as [number, number]); }}>
+            {SAMPLING_PHASES.map(phase => <option key={phase.label} value={phase.value.join(',')}>{phase.label}{phase.label === '居中' ? '' : ' 0.35 格'}</option>)}
+            {!SAMPLING_PHASES.some(phase => phase.value.every((value, index) => value === samplingPhase[index])) && <option value={samplingPhase.join(',')}>已保存位置（{samplingPhase.join(', ')}）</option>}
+          </select></label>
+          <div className="beadify-actions">
+            <button onClick={() => void generateFromImage()} disabled={!sourceImage || isGenerating}>{language === 'zh' ? '生成预览' : 'Generate preview'}</button>
+            <button onClick={() => void compareSamplingPhases()} disabled={!sourceImage || generationMethod === 'original' || isGenerating}>比较网格位置</button>
+            {isGenerating && <button onClick={invalidateGeneration}>{language === 'zh' ? '取消生成' : 'Cancel generation'}</button>}
+          </div>
+          {phaseCandidates.length > 0 && <div className="beadify-phase-candidates" role="group" aria-label="网格位置候选">
+            {phaseCandidates.map((preview, index) => <button type="button" key={index} aria-label={`选择${SAMPLING_PHASES[index].label}网格`} aria-pressed={candidate === preview} onClick={() => { if (generationSession.current.isCurrent(preview.ticket)) setCandidate(preview); }}>
+              <CandidatePreview result={preview.result} palette={preview.pattern?.paletteSnapshot ?? generationPalette()} /><span>{SAMPLING_PHASES[index].label}</span>
+            </button>)}
+          </div>}
+
+          {textCandidates.length > 0 && <div className="beadify-phase-candidates" role="group" aria-label="文字增强候选比较">
+            {textCandidates.map(preview => <button key={preview.label} type="button" aria-label={preview.label} aria-pressed={candidate === preview} onClick={() => { if (generationSession.current.isCurrent(preview.ticket)) setCandidate(preview); }}>
+              <CandidatePreview result={preview.result} palette={preview.pattern!.paletteSnapshot} /><span>{preview.label}</span>
+            </button>)}
+          </div>}
+          {candidate && <div className="beadify-candidate" data-testid="generation-candidate">
+            <CandidatePreview result={candidate.result} palette={candidate.pattern?.paletteSnapshot ?? generationPalette()} />
+            <p>{candidate.mode === 'roi' ? '局部重算 · ' : ''}{candidate.result.width} × {candidate.result.height} · {candidate.result.colorsUsed} {language === 'zh' ? '色' : 'colors'} · {candidate.result.totalBeads} {language === 'zh' ? '颗' : 'beads'}</p>
+            {candidate.retypeInfo && <p className="beadify-hint">重新排字 · 自动字号 {candidate.retypeInfo.fontSize.toFixed(1)} 格 · 修改 {candidate.retypeInfo.changedCells} 格。{candidate.textRetype?.backgroundMode === 'blend-color' ? '底色向周围背景渐变过渡。' : candidate.pattern?.diagnostics.warnings.some(w => w.includes('没有明确笔画')) ? '当前底图由周围背景推算，请检查纹理。' : '原笔画位置已参考周围背景修复。'}</p>}
+            {candidate.textResult && <details className="beadify-risk"><summary>文字增强诊断 · 修改 {candidate.textResult.changedCells.length} 格</summary>
+              <p>无法在当前网格表达或无法确认的区域会保留原样。</p>
+              <ul>{candidate.textResult.extraction?.map(d => <li key={d.regionId}>{d.regionId}：{d.status === 'SOURCE_LAYERS_EXTRACTED' ? `已提取原图笔画（${d.inkPixels} 像素）` : d.status === 'EXPLICIT_SOURCE_EVIDENCE_RETAINED' ? '使用手动笔画/背景标注' : `未自动增强（${d.status}）`}</li>)}</ul>
+              <ul>{candidate.textResult.health.map(d => <li key={d.regionId}>{d.regionId}：缺失 {d.before.missing} → {d.after.missing}；断裂 {d.before.fragments} → {d.after.fragments}；粘连 {d.before.bridges} → {d.after.bridges}；空洞丢失 {d.before.lostHoles} → {d.after.lostHoles}</li>)}</ul>
+            </details>}
+            {candidate.pattern && <p className="beadify-risk">独立主体 {candidate.pattern.diagnostics.physicalComponents} · 单颗颜色 {candidate.pattern.diagnostics.monochromeSingletons}。独立主体需分别熨烫；单颗高光可能是必要细节。</p>}
+            {candidate.pattern?.diagnostics.warnings.some(w => w.includes('soft feature')) && <p className="beadify-risk">部分细节强化未能保留，请增加色数或手工修正。</p>}
+            {candidate.pattern?.diagnostics.warnings.some(warning => /feature|mask|特征/i.test(warning)) && <details className="beadify-risk"><summary>查看细节诊断</summary><ul>{candidate.pattern.diagnostics.warnings.filter(warning => /feature|mask|特征/i.test(warning)).map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
+            <div className="beadify-actions">
+              <button onClick={acceptCandidate}>{language === 'zh' ? '接受为新图层' : 'Accept as new layer'}</button>
+              <button onClick={invalidateGeneration}>{language === 'zh' ? '拒绝候选' : 'Reject preview'}</button>
+            </div>
+          </div>}
+
           <div className="image-field-grid">
             <label className="image-number-field">
               <span className="field-label-with-help">
                 {text.width}
                 <span className="help-dot image-help-dot" {...imageHelpProps(text.heightFromRatio)}>?</span>
               </span>
-              <input aria-label="Output width" type="number" min={8} max={180} value={convertWidth} onChange={(event) => setConvertWidth(Number(event.target.value))} />
+              <input aria-label="Output width" type="number" min={8} max={180} value={convertWidth} onChange={(event) => { invalidateGeneration(); setConvertWidth(Number(event.target.value)); }} />
             </label>
-            <label className="image-range-field">
-              <span>
-                <span className="field-label-with-help">
-                  {text.colors}
-                  <span className="help-dot image-help-dot" {...imageHelpProps(text.colorsHint)}>?</span>
+            <label className="image-number-field"><span>高度</span><input aria-label="Output height" type="number" min={1} max={256} value={convertHeight} onChange={e => { invalidateGeneration(); setConvertHeight(Number(e.target.value)); }} /></label>
+            <div className="image-color-limit">
+              <label className="image-range-field">
+                <span>
+                  <span className="field-label-with-help">
+                    {text.colors}
+                    <span className="help-dot image-help-dot" {...imageHelpProps(text.colorsHint)}>?</span>
+                  </span>
+                  <strong>{maxColors} / {activePalette.length}</strong>
                 </span>
-                <strong>{maxColors}</strong>
-              </span>
-              <input aria-label="Color limit" type="range" min={6} max={48} step={1} value={maxColors} onChange={(event) => setMaxColors(Number(event.target.value))} />
-            </label>
-            <label className="image-range-field">
-              <span>
-                <span className="field-label-with-help">
-                  {text.tolerance}
-                  <span className="help-dot image-help-dot" {...imageHelpProps(text.toleranceHint)}>?</span>
-                </span>
-                <strong>{tolerance}</strong>
-              </span>
-              <input aria-label="Background tolerance" type="range" min={0} max={120} step={1} value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} />
-            </label>
+                <input aria-label="Color limit" type="range" min={generationMethod === 'original' ? 2 : 1} max={activePalette.length} step={1} value={maxColors} onChange={(event) => { invalidateGeneration(); setMaxColors(Number(event.target.value)); }} />
+              </label>
+              <div className="color-limit-controls">
+                <input aria-label="Color limit value" type="number" min={generationMethod === 'original' ? 2 : 1} max={activePalette.length} step={1} value={maxColors} onChange={event => { invalidateGeneration(); setMaxColors(clampInteger(Number(event.target.value), generationMethod === 'original' ? 2 : 1, activePalette.length)); }} />
+                <button type="button" onClick={() => { invalidateGeneration(); setAllowedInput(''); setMaxColors(activePalette.length); }}>
+                  {language === 'zh' ? `使用全部${activePalette.length}色` : `Use all ${activePalette.length} colors`}
+                </button>
+              </div>
+              <p className="beadify-hint">{language === 'zh' ? `当前色卡共 ${activePalette.length} 色，实际用色由图片决定。` : `${activePalette.length} palette colors available; the image determines which are used.`}</p>
+            </div>
           </div>
-
-          <label className="stacked-field image-style-field">
-            <span>{text.generationStyle}</span>
-            <select
-              aria-label="Generation style"
-              value={generationStyle}
-              onChange={(event) => setGenerationStyle(event.target.value as GenerationStyle)}
-            >
-              <option value="cartoon">{text.generationStyleCartoon}</option>
-              <option value="realistic">{text.generationStyleRealistic}</option>
-            </select>
-          </label>
-
-          <label className="stacked-field image-background-field">
-            <span>{text.background}</span>
-            <select aria-label="Background handling" value={backgroundMode} onChange={(event) => setBackgroundMode(event.target.value as BackgroundMode)}>
-              <option value="keep">{text.keepBackground}</option>
-              <option value="remove-white">{text.removeWhite}</option>
-            </select>
-          </label>
+          <label className="stacked-field"><span>常用图纸尺寸</span><select aria-label="Output preset" value={convertWidth === convertHeight ? String(convertWidth) : ''} onChange={e => { invalidateGeneration(); setConvertWidth(Number(e.target.value)); setConvertHeight(Number(e.target.value)); }}>
+            <option value="">自定义</option>{[29,40,50,58].map(size => <option key={size} value={size}>{size} × {size}</option>)}
+          </select></label>
+          <p className="beadify-hint">透明格不计入用量。色卡RGB为近似值，颜色数越少，细节越容易合并。</p>
         </section>
 
+        <section className="left-card"><ConstraintEditor project={project} palette={completeProjectPalette()} selectedColorId={selectedColorId} onChange={updateConstraints} onRecalculate={(indices, source) => void recalculateRegion(indices, source)} disabled={isGenerating} />
+          <p className="beadify-risk">{currentDiagnostics.physicalComponents} 个独立主体 · {currentDiagnostics.monochromeSingletons} 颗单独颜色 · {currentDiagnostics.narrowConnections} 处细连接提示。高光无需一律清除。</p>
+        </section>
         <section className="left-card reference-card">
           <div className="left-card-header">
             <div>
@@ -2194,6 +2516,13 @@ export default function App() {
           <span className="status-pill">{text.tools[tool].title}</span>
         </section>
 
+          {generationProgress && (isGenerating || candidate) && <div className="generation-progress" data-testid="generation-progress" aria-live="polite">
+            <p><strong>{generationProgress.label}</strong><span>{Math.floor(generationProgress.value)}%</span></p>
+            <progress aria-label="图案生成进度" max={100} value={generationProgress.value} />
+            {generationProgress.evaluations !== undefined && <small>已评估 {generationProgress.evaluations.toLocaleString()} / {generationProgress.maxEvaluations?.toLocaleString()} 次；达到收敛可提前完成。</small>}
+            {isGenerating && <button onClick={invalidateGeneration}>取消当前生成</button>}
+          </div>}
+
         {rightTab === 'palette' && (
           <section className="panel-section panel-tab-body palette-section">
             <h2>{text.palette}</h2>
@@ -2227,7 +2556,7 @@ export default function App() {
             </div>
             <div className="readonly-brand-field">
               {text.brandCodes}
-              <select value={paletteMode} onChange={(event) => setPaletteMode(event.target.value as PaletteMode)}>
+              <select aria-label="Palette mode" value={paletteMode} onChange={(event) => { invalidateGeneration(); setPaletteMode(event.target.value as PaletteMode); }}>
                 <option value="basic">{text.mardBasic}</option>
                 <option value="complete">{text.mardComplete}</option>
               </select>
@@ -2370,14 +2699,6 @@ export default function App() {
                           }}
                         />
                         <span className="layer-meta">{layerMetaText(isActive, layer.visible, layer.locked, beadCount)}</span>
-                        <label className="checkline layer-count">
-                          <input
-                            type="checkbox"
-                            checked={layer.includeInUsage}
-                            onChange={(event) => updateLayer(layer.id, { includeInUsage: event.target.checked })}
-                          />
-                          {text.countLayer}
-                        </label>
                       </form>
                     ) : (
                       <div className="layer-main layer-main-static" onClick={() => selectLayer(layer.id)}>
@@ -2401,14 +2722,6 @@ export default function App() {
                         <span className="layer-meta">
                           {layerMetaText(isActive, layer.visible, layer.locked, beadCount)}
                         </span>
-                        <label className="checkline layer-count">
-                          <input
-                            type="checkbox"
-                            checked={layer.includeInUsage}
-                            onChange={(event) => updateLayer(layer.id, { includeInUsage: event.target.checked })}
-                          />
-                          {text.countLayer}
-                        </label>
                       </div>
                     )}
                     <div className="layer-actions">
@@ -2491,43 +2804,8 @@ export default function App() {
               </div>
             </label>
             <div className="usage-summary-card">
-              <div className="usage-summary-head">
-                <strong>{text.countedLayerTitle}</strong>
-                <span>{text.countedLayers(countedLayers.length)}</span>
-              </div>
-              <div className="usage-layer-actions">
-                <button
-                  type="button"
-                  className={countedLayers.length === layers.length ? 'active' : ''}
-                  onClick={() => updateUsageLayerSelection(new Set(layers.map((layer) => layer.id)))}
-                >
-                  {text.countAllLayers}
-                </button>
-                <button
-                  type="button"
-                  className={countedLayers.length === 1 && countedLayers[0]?.id === activeLayer.id ? 'active' : ''}
-                  onClick={() => updateUsageLayerSelection(new Set([activeLayer.id]))}
-                >
-                  {text.countCurrentLayer}
-                </button>
-              </div>
-              <div className="usage-layer-chips">
-                {layers.map((layer) => {
-                  const isIncluded = layer.includeInUsage;
-                  return (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={isIncluded ? 'active' : ''}
-                      aria-pressed={isIncluded}
-                      onClick={() => toggleUsageLayer(layer.id)}
-                    >
-                      {layerDisplayName(layer, layers.findIndex((item) => item.id === layer.id))}
-                    </button>
-                  );
-                })}
-              </div>
-              {countedLayers.length === 0 && <div className="usage-no-layers">{text.noCountedLayers}</div>}
+              <div className="usage-summary-head"><strong>当前可见图纸</strong><span>{layers.filter(layer => layer.visible && layer.opacity > 0).length} 个可见图层</span></div>
+              <p className="beadify-hint">重叠位置只统计最上方可见豆子；隐藏图层不计入用量。</p>
               {(usage.length > 32 || isolatedBeads > 0) && (
                 <div className="usage-notes">
                   {usage.length > 32 && <span>{text.manyColors}</span>}
@@ -2642,18 +2920,19 @@ export default function App() {
             <div className="adjustment-tool-card">
               <div className="adjustment-tool-heading">
                 <strong>{text.colorLimit}</strong>
-                <b>{layerColorLimit}</b>
+                <b>{layerColorLimit} / {activePalette.length}</b>
               </div>
               <span>{text.colorLimitHint}</span>
               <input
                 aria-label="Layer color limit"
                 type="range"
                 min={2}
-                max={48}
+                max={activePalette.length}
                 step={1}
                 value={layerColorLimit}
                 onChange={(event) => setLayerColorLimit(Number(event.target.value))}
               />
+              <input aria-label="Layer color limit value" type="number" className="color-limit-number" min={2} max={activePalette.length} step={1} value={layerColorLimit} onChange={event => setLayerColorLimit(clampInteger(Number(event.target.value), 2, activePalette.length))} />
               <button type="button" onClick={applyLayerColorLimit} disabled={activeLayer.locked}>
                 {text.applyColorLimit}
               </button>
@@ -2740,7 +3019,7 @@ export default function App() {
               <h2>{text.cell}</h2>
               {hoverCell ? (
                 <span>
-                  R{hoverCell.y + 1} C{hoverCell.x + 1} - {getColor(hoverCell.colorId)?.primaryCode ?? text.empty}
+                  R{hoverCell.y + 1} C{hoverCell.x + 1} - {projectColor(project, hoverCell.colorId)?.primaryCode ?? text.empty}
                 </span>
               ) : (
                 <span>{text.hoverBoard}</span>
@@ -2878,7 +3157,7 @@ function limitLayerColors(
   activePalette: NonNullable<ReturnType<typeof getColor>>[],
   limit: number,
 ): { cells: Array<string | null>; changed: number } {
-  const targetLimit = Math.max(2, Math.min(48, Math.round(limit)));
+  const targetLimit = clampInteger(limit, 2, activePalette.length);
   const stats = collectLayerColorStats(cells, activePalette);
   if (stats.length <= targetLimit) return { cells, changed: 0 };
   const kept = selectLayerColorRepresentatives(stats, targetLimit);

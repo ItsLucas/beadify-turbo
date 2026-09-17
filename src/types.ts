@@ -59,7 +59,28 @@ export type BoardSettings = {
   showBoardIds: boolean;
 };
 
+export type SavedGenerationSettings = Omit<import('./beadify/contracts/index').GenerationRequest, 'schemaVersion' | 'revision' | 'image' | 'palette' | 'constraints' | 'method' | 'preparedRaster'> & {
+  method: import('./beadify/contracts/index').GenerationRequest['method'] | 'original';
+  sourceName?: string;
+  sourceHash?: string;
+};
+
+export type BeadifyProjectMetadata = {
+  schemaVersion: 1;
+  paletteSnapshot: import('./beadify/contracts/index').Palette;
+  lastGeneration: { method: SavedGenerationSettings['method']; inputRevision: number; configHash: string | null };
+  generationSettings?: SavedGenerationSettings;
+  constraints?: import('./beadify/contracts/index').CellConstraint[];
+  sourceRaster?: import('./beadify/contracts/index').SourceRaster;
+  sourceRasterOmission?: 'file-budget' | 'storage-quota';
+  textAnalysis?: import('./beadify/contracts/index').TextAnalysis;
+  sceneAnalysis?: import('./beadify/contracts/index').SceneAnalysis;
+  textAnalysisOmission?: 'file-budget' | 'storage-quota';
+  textRetype?: import('./beadify/text-retype').TextRetype;
+};
+
 export type BeadProject = {
+  beadify?: BeadifyProjectMetadata;
   version: string;
   name: string;
   width: number;

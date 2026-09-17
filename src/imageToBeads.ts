@@ -38,7 +38,11 @@ const styleProfiles: Record<GenerationStyle, StyleProfile> = {
   },
 };
 
-export async function imageFileToBeads(file: File, options: ConvertOptions): Promise<ConvertResult> {
+export async function imageFileToBeads(file: File, options: ConvertOptions, onProgress?: (phase: 'decoding' | 'sampling' | 'palette' | 'finalizing') => void): Promise<ConvertResult> {
+  const progress = async (phase: 'decoding' | 'sampling' | 'palette' | 'finalizing') => {
+    if (onProgress) { onProgress(phase); await new Promise(resolve => setTimeout(resolve, 0)); }
+  };
+  await progress('decoding');
   const image = await loadImage(file);
   const width = Math.max(1, Math.round(options.width));
   const height = Math.max(1, Math.round((image.naturalHeight / image.naturalWidth) * width));
@@ -57,11 +61,14 @@ export async function imageFileToBeads(file: File, options: ConvertOptions): Pro
   const requestedSpeckleStrength = options.speckleReduction ?? 0;
   const speckleStrength = requestedSpeckleStrength > 0 ? clampStrength(requestedSpeckleStrength + profile.postStrengthBias) : 0;
   const backgroundColor = estimateBackgroundColor(data, sourceWidth, sourceHeight);
+  await progress('sampling');
   const sampledCells = sampleGridCells(data, sourceWidth, sourceHeight, width, height, options, backgroundColor, profile, speckleStrength);
+  await progress('palette');
   const ranked = rankPaletteColors(sampledCells, options, activePalette, profile);
   const candidates = selectCandidateColors(ranked, Math.max(2, options.maxColors), activePalette, speckleStrength, profile);
   const cells = sampledCells.map((cell) => chooseCellColor(cell, candidates, profile));
 
+  await progress('finalizing');
   const mergedCells = mergeSimilarColors(cells, speckleStrength, candidates);
   const compactCells = reduceTinyRegions(mergedCells, width, height, speckleStrength, candidates);
   const reducedCells = reduceSpeckles(compactCells, width, height, speckleStrength, candidates);

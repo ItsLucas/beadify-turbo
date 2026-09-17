@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getColor } from './palette';
+import { projectColor } from './project';
 import type { BeadProject } from './types';
 
 const { useEffect, useMemo, useRef, useState } = React;
@@ -41,13 +41,7 @@ export default function ThreePreview({ project, title, emptyLabel, closeLabel, e
     targetY: 0,
   });
   const [expanded, setExpanded] = useState(false);
-  const beadCount = useMemo(
-    () =>
-      (project.layers ?? [])
-        .filter((layer) => layer.visible)
-        .reduce((sum, layer) => sum + (layer.cells ?? []).filter(Boolean).length, 0),
-    [project.layers],
-  );
+  const beadCount = useMemo(() => project.cells.filter(cell => cell !== null).length, [project.cells]);
 
   useEffect(() => {
     const host = expanded ? modalHostRef.current : hostRef.current;
@@ -173,22 +167,17 @@ export default function ThreePreview({ project, title, emptyLabel, closeLabel, e
 
     const spacing = 0.72;
     const byColor = new Map<string, Array<[number, number, number]>>();
-    const visibleLayers = (project.layers ?? []).filter((layer) => layer.visible);
-    visibleLayers.forEach((layer, layerIndex) => {
-      (layer.cells ?? []).forEach((colorId, index) => {
-        if (!colorId) return;
-        const x = index % project.width;
-        const y = Math.floor(index / project.width);
-        const items = byColor.get(colorId) ?? [];
-        items.push([x, y, layerIndex]);
-        byColor.set(colorId, items);
-      });
+    project.cells.forEach((colorId, index) => {
+      if (!colorId) return;
+      const items = byColor.get(colorId) ?? [];
+      items.push([index % project.width, Math.floor(index / project.width), 0]);
+      byColor.set(colorId, items);
     });
 
     const beadGeometry = createBeadGeometry(project.settings.beadDisplayMode === 'pixel' ? 'square' : 'round');
     const matrix = new THREE.Matrix4();
     byColor.forEach((items, colorId) => {
-      const color = getColor(colorId);
+      const color = projectColor(project, colorId);
       if (!color) return;
       const material = new THREE.MeshBasicMaterial({
         color: new THREE.Color(color.hex),
@@ -213,7 +202,7 @@ export default function ThreePreview({ project, title, emptyLabel, closeLabel, e
     controlsRef.current.minDistance = Math.max(3.5, span * 0.35);
     controlsRef.current.maxDistance = Math.max(12, span * 3.8);
     controlsRef.current.distance = clamp(span * 1.25, controlsRef.current.minDistance, controlsRef.current.maxDistance);
-    controlsRef.current.targetY = Math.max(0, ((visibleLayers.length - 1) * LAYER_LIFT) / 2);
+    controlsRef.current.targetY = 0;
     updateCamera(preview, controlsRef.current);
   }, [project, expanded]);
 

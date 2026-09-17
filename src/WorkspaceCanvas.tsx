@@ -1,4 +1,4 @@
-import { getColor } from './palette';
+import { projectColor } from './project';
 import type { ArrowKind, BeadLayer, BeadProject, ClipboardPattern, CopyMode, MirrorDirection, MoveMode, RemoveMode, ShapeFillMode, ShapeKind, TextDirection, ToolId } from './types';
 
 const { useEffect, useMemo, useRef, useState } = React;
@@ -844,7 +844,7 @@ function drawPattern(
   context.scale(zoom, zoom);
   context.fillStyle = '#fffdf7';
   context.fillRect(0, 0, project.width * cellSize, project.height * cellSize);
-  const visibleLayers = (project.layers ?? []).filter((layer) => layer.visible);
+  const visibleLayers = (project.layers ?? []).filter((layer) => layer.visible && layer.opacity > 0);
   const highlightedCells = highlightedCellIndices.length > 0 ? new Set(highlightedCellIndices) : null;
   if (referenceImage.visible && referenceImage.placement === 'below') {
     drawReferenceImage(context, project, cellSize, referenceImage);
@@ -857,19 +857,19 @@ function drawPattern(
         .map((layer) => ({ layer, colorId: layer.cells?.[index] }))
         .filter((item): item is { layer: BeadLayer; colorId: string } => Boolean(item.colorId));
       const topColorId = stack.length > 0 ? stack[stack.length - 1].colorId : null;
-      const topColor = getColor(topColorId);
+      const topColor = projectColor(project, topColorId);
       const left = x * cellSize;
       const top = y * cellSize;
 
       if (project.settings.beadDisplayMode === 'bead') {
-        drawBeadStack(context, stack, left, top, cellSize);
+        drawBeadStack(context, stack, left, top, cellSize, project);
       } else if (topColor) {
         context.fillStyle = topColor.hex;
         context.fillRect(left, top, cellSize, cellSize);
       }
 
       if (stack.length > 1 && project.settings.showLayerOverlap) {
-        drawStackOverlay(context, stack, left, top, cellSize);
+        drawStackOverlay(context, stack, left, top, cellSize, project);
       }
 
       if (highlightedColorId && topColorId !== highlightedColorId) {
@@ -903,10 +903,10 @@ function drawPattern(
   }
   if (shapeDraft && canEdit) {
     const indices = collectShapeIndices(shapeDraft.kind, shapeDraft.fillMode, shapeDraft.arrowKind, shapeDraft.start, shapeDraft.end, project.width, project.height);
-    drawShapePreview(context, indices, project.width, cellSize, selectedColorId);
+    drawShapePreview(context, indices, project.width, cellSize, selectedColorId, project);
   } else if (tool === 'shape' && hoverPoint?.cell && canEdit) {
     const index = hoverPoint.cell.y * project.width + hoverPoint.cell.x;
-    drawShapePreview(context, [index], project.width, cellSize, selectedColorId);
+    drawShapePreview(context, [index], project.width, cellSize, selectedColorId, project);
   }
   if (project.settings.showGrid) drawGrid(context, project, cellSize);
   if (project.settings.showPegboardBoundaries) drawPegboardBoundaries(context, project, cellSize);
@@ -983,9 +983,10 @@ function drawShapePreview(
   width: number,
   cellSize: number,
   selectedColorId: string,
+  project: BeadProject,
 ): void {
   if (indices.length === 0) return;
-  const color = getColor(selectedColorId);
+  const color = projectColor(project, selectedColorId);
   context.save();
   if (color) {
     context.fillStyle = hexToRgba(color.hex, 0.32);
@@ -1007,6 +1008,7 @@ function drawClipboardPatternPreview(
   boardWidth: number,
   boardHeight: number,
   cellSize: number,
+  project: BeadProject,
 ): void {
   const indices: number[] = [];
   context.save();
@@ -1015,7 +1017,7 @@ function drawClipboardPatternPreview(
     const x = startX + (index % pattern.width);
     const y = startY + Math.floor(index / pattern.width);
     if (x < 0 || y < 0 || x >= boardWidth || y >= boardHeight) return;
-    const color = getColor(colorId);
+    const color = projectColor(project, colorId);
     if (color) {
       context.fillStyle = hexToRgba(color.hex, 0.34);
       context.fillRect(x * cellSize + 2, y * cellSize + 2, cellSize - 4, cellSize - 4);
@@ -1713,7 +1715,7 @@ function drawToolImpactPreview(
 
   if (tool === 'paste') {
     if (!hoverPoint.cell || !clipboardPattern) return;
-    drawClipboardPatternPreview(context, clipboardPattern, hoverPoint.cell.x, hoverPoint.cell.y, project.width, project.height, cellSize);
+    drawClipboardPatternPreview(context, clipboardPattern, hoverPoint.cell.x, hoverPoint.cell.y, project.width, project.height, cellSize, project);
     return;
   }
 
@@ -1746,7 +1748,7 @@ function drawToolImpactPreview(
   if (tool === 'text') {
     if (!hoverPoint.cell) return;
     const indices = collectTextIndices(textToolValue, textToolDirection, textToolSize, textToolSpacing, hoverPoint.cell.x, hoverPoint.cell.y, project.width, project.height);
-    drawShapePreview(context, indices, project.width, cellSize, selectedColorId);
+    drawShapePreview(context, indices, project.width, cellSize, selectedColorId, project);
     return;
   }
 
@@ -2292,11 +2294,12 @@ function drawBeadStack(
   left: number,
   top: number,
   cellSize: number,
+  project: BeadProject,
 ): void {
   if (stack.length === 0) return;
 
   const topItem = stack[stack.length - 1];
-  const color = getColor(topItem.colorId);
+  const color = projectColor(project, topItem.colorId);
   if (!color) return;
   context.globalAlpha = Number.isFinite(topItem.layer.opacity) ? topItem.layer.opacity : 1;
   context.beginPath();
@@ -2322,6 +2325,7 @@ function drawStackOverlay(
   left: number,
   top: number,
   cellSize: number,
+  project: BeadProject,
 ): void {
   const count = stack.length;
   const badgeRadius = Math.max(3.5, Math.min(5.5, cellSize * 0.25));
@@ -2353,7 +2357,7 @@ function drawStackOverlay(
   context.fillStyle = 'rgba(17, 24, 39, 0.42)';
   context.fillRect(stripLeft - 0.5, stripTop - 0.5, stripWidth + 1, stripHeight + 1);
   stripColors.forEach(({ colorId }, index) => {
-    const color = getColor(colorId);
+    const color = projectColor(project, colorId);
     if (!color) return;
     context.fillStyle = color.hex;
     context.fillRect(stripLeft, stripTop + index * segmentHeight, stripWidth, Math.ceil(segmentHeight));

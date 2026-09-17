@@ -1,25 +1,39 @@
 {
-  "name": "perler-beads-generator",
-  "version": "0.1.0",
-  "description": "A powerful Perler bead pattern editor for turning images into printable bead charts with MARD color matching, layers, 3D preview, and usage exports.",
+  "name": "beadify-turbo",
+  "version": "0.5.1",
+  "description": "Bead pattern workbench with CPU structure optimization, manual editing and printable exports.",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "npm run build && node scripts/dev-server.cjs",
-    "build": "tsc && node scripts/clean-dist.cjs && tsc -p tsconfig.build.json && node scripts/post-build.cjs && node scripts/write-html.cjs",
-    "preview": "node scripts/dev-server.cjs"
+    "build": "tsc && node scripts/clean-dist.cjs && tsc -p tsconfig.build.json && node scripts/post-build.cjs && node scripts/write-html.cjs && node scripts/package-lite.cjs",
+    "preview": "node scripts/dev-server.cjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.core.json && tsc -p tsconfig.tools.json",
+    "schema:generate": "json2ts -i src/beadify/contracts/schema.json -o src/beadify/contracts/generated.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "cli": "tsx scripts/beadify-cli.ts",
+    "package:web": "npm run package:lite",
+    "package:lite": "npm run build",
+    "test:lite": "node --import tsx scripts/test-lite.cjs"
   },
   "dependencies": {
-    "@types/three": "^0.184.1",
-    "@vitejs/plugin-react": "^4.2.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "three": "^0.184.0",
-    "typescript": "^5.4.0",
-    "vite": "^5.2.0"
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.184.0"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "0.184.1",
+    "ajv": "8.20.0",
+    "json-schema-to-typescript": "16.0.0",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

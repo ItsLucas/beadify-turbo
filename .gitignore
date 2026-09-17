@@ -43,3 +43,37 @@ release-smoke*.png
 *_release_smoke.png
 *.local
 *.local.*
+
+# Private user image and generated local-only comparisons
+/26379.png
+/benchmark/private/
+
+# User-supplied references: local development and layout inspection only.
+/reference-images/
+
+# Local OCR script bytecode
+/scripts/text-ocr/__pycache__/
+/scripts/__pycache__/
+
+# Public repository contains source and test inputs only.
+/benchmark/*
+!/benchmark/README.md
+!/benchmark/*.ts
+!/benchmark/fixtures/
+/benchmark/fixtures/*
+!/benchmark/fixtures/LICENSE.md
+!/benchmark/fixtures/04-white-eye-face.png
+!/benchmark/fixtures/04-white-eye-face.request.json
+!/benchmark/text/
+/benchmark/text/*
+!/benchmark/text/*.source.png
+!/benchmark/text/interfaces-v1/
+/benchmark/text/interfaces-v1/*
+!/benchmark/text/interfaces-v1/*.analysis.json
+/docs/*
+!/docs/improvements.md
+!/docs/user-guide.md
+!/docs/lite-deployment.md
+!/docs/images/
+/worklog*
+/validation*

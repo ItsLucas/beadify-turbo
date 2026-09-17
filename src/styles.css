@@ -1650,6 +1650,29 @@ button:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
+.image-color-limit {
+  display: grid;
+  gap: 6px;
+}
+
+.color-limit-controls {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.color-limit-controls button,
+.color-limit-number {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
 .right-click-toggle button:hover:not(:disabled) {
   border-color: rgba(23, 101, 106, 0.18);
   background: rgba(255, 255, 255, 0.72);
@@ -3846,3 +3869,97 @@ button:focus-visible {
     border-top: 1px solid var(--line-strong);
   }
 }
+
+/* Beadify candidate transactions reuse the upstream workbench. */
+.beadify-hint { font-size: 12px; line-height: 1.5; color: #637080; }
+.beadify-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.beadify-actions button { border: 1px solid #d0d7de; border-radius: 7px; padding: 8px 10px; background: #fff; cursor: pointer; }
+.beadify-actions button:disabled { opacity: .5; cursor: default; }
+.beadify-candidate { border: 1px solid #a9c2dd; border-radius: 10px; padding: 10px; margin: 10px 0; }
+.beadify-candidate-preview { display: block; width: 100%; max-height: 220px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#edf0f3 0 25%, #fff 0 50%) 0 / 12px 12px; }
+/* Controls wrap instead of overlapping history buttons at laptop widths. */
+.topbar { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.brand-lockup { flex: 0 0 265px; }
+.topbar-workspace { display: flex; flex: 1 1 1000px; flex-wrap: wrap; gap: 8px; }
+.topbar-command-zone { flex-wrap: wrap; justify-content: flex-start; }
+.topbar-right { margin-left: auto; }
+.topbar-actions { flex-shrink: 0; }
+@media (max-width: 900px) {
+  .topbar-workspace { flex-basis: 100%; }
+  .topbar-command-zone { overflow-x: auto; max-width: 100%; }
+}
+.beadify-constraints, .beadify-advanced { margin: 12px 0; border: 1px solid #d4d9dd; border-radius: 8px; padding: 10px; }
+.beadify-constraints summary, .beadify-advanced summary { cursor: pointer; font-weight: 600; }
+.beadify-selection-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.beadify-selection-fields input { width: 100%; min-width: 0; }
+.beadify-advanced label { display: grid; gap: 5px; margin: 10px 0; }
+.beadify-advanced input[type=text] { width: 100%; }
+.beadify-risk { font-size: 12px; line-height: 1.6; color: #80540c; }
+
+/* Subject editing: this project's build copies only that stylesheet. */
+.beadify-subject-editor { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-muted); }
+.beadify-subject-heading { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.beadify-subject-heading span, .beadify-subject-hint { color: var(--text-muted); font-size: 12px; }
+.beadify-subject-controls, .beadify-subject-crop { display: flex; flex-wrap: wrap; gap: 8px 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.beadify-subject-controls > label { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.beadify-subject-controls input[type="range"] { width: 100px; }
+.beadify-subject-controls select { max-width: 100%; min-height: 32px; }
+.beadify-subject-tools, .beadify-subject-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.beadify-subject-tools button, .beadify-subject-actions button { min-height: 30px; padding: 0 8px; font-size: 12px; }
+.beadify-subject-tools button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.beadify-subject-checkbox input { margin: 0; }
+.beadify-subject-canvases { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.beadify-subject-canvases figure { min-width: 0; margin: 0; }
+.beadify-subject-canvases figcaption { margin-bottom: 5px; color: var(--text-muted); font-size: 12px; }
+.beadify-subject-canvas-wrap { display: flex; align-items: center; justify-content: center; min-height: 100px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: repeating-conic-gradient(#e8e8e8 0% 25%, #fff 0% 50%) 0 / 16px 16px; }
+.beadify-subject-canvas-wrap canvas { display: block; max-width: 100%; width: auto; height: auto; max-height: 290px; object-fit: contain; }
+.beadify-subject-source { touch-action: none; cursor: crosshair; }
+.beadify-subject-crop label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.beadify-subject-crop input { width: 68px; min-height: 28px; padding: 3px 5px; }
+.beadify-subject-hint, .beadify-subject-error { margin: 0; line-height: 1.5; }
+.beadify-subject-error { color: #a12d29; font-size: 12px; }
+.beadify-source-features { padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.beadify-source-features summary, .beadify-feature-toggle { cursor: pointer; font-weight: 600; }
+.beadify-feature-toggle { padding: 6px 9px; font-size: 12px; }
+.beadify-source-features fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.beadify-source-features label, .beadify-feature-options label { display: grid; gap: 5px; margin: 8px 0; font-size: 12px; }
+.beadify-source-features input, .beadify-feature-options input { min-width: 0; width: 100%; }
+.beadify-feature-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.beadify-source-features .beadify-feature-checkbox, .beadify-feature-options .beadify-feature-checkbox { display: flex; align-items: center; gap: 6px; }
+.beadify-feature-checkbox input { width: auto; }
+.beadify-feature-list { list-style: none; padding: 0; display: grid; gap: 6px; }
+.beadify-feature-list li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.beadify-feature-list li span { flex: 1 1 100%; overflow-wrap: anywhere; }
+.beadify-feature-list button { font-size: 12px; padding: 4px 8px; }
+.beadify-phase-candidates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 10px 0; }
+.beadify-phase-candidates button { min-width: 0; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.beadify-phase-candidates button[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); }
+.beadify-phase-candidates span { display: block; margin-top: 5px; font-size: 12px; }
+@media (max-width: 540px) {
+  .beadify-subject-canvas-wrap canvas { max-height: 210px; }
+  .beadify-subject-crop { gap: 7px; }
+  .beadify-subject-crop input { width: 52px; }
+}
+/* Source text analysis shares the generation sidebar and candidate transaction. */
+.text-analysis-panel p { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.text-analysis-canvas { display: block; width: 100%; height: auto; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; touch-action: none; cursor: crosshair; }
+.text-region-list { max-height: 320px; overflow: auto; }
+.text-region { display: grid; grid-template-columns: 1fr 85px; gap: 5px; margin: 7px 0; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.text-region input, .text-region select { min-width: 0; width: 100%; }
+.text-region span { font-size: 11px; overflow-wrap: anywhere; }
+.text-region button { white-space: normal; overflow-wrap: anywhere; }
+.text-region button[aria-pressed="true"] { outline: 2px solid #2563eb; }
+.beadify-advanced fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.generation-progress { padding: 10px; margin: 8px 0; border-radius: 7px; border: 1px solid #b7d2d1; background: #f3f9f8; }
+.generation-progress p { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 0 0 6px; }
+.generation-progress progress { display: block; width: 100%; height: 12px; accent-color: #17656a; }
+.generation-progress small { display: block; margin-top: 5px; color: #647078; font-size: 11px; }
+
+/* Optional source-grounded subject and detail analysis. */
+.beadify-scene-editor { margin: 12px 0; padding: 10px; border: 1px solid #d5dfe2; border-radius: 8px; }
+.beadify-scene-editor summary { cursor: pointer; font-weight: 600; }
+.beadify-scene-editor label { display: grid; gap: 4px; margin: 8px 0; }
+.beadify-scene-editor textarea { width: 100%; min-height: 72px; resize: vertical; box-sizing: border-box; }
+.scene-region-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.scene-region-list button[aria-pressed="true"] { outline: 2px solid #17656a; }
+.beadify-scene-editor fieldset { min-width: 0; margin: 10px 0; border: 1px solid #d5dfe2; border-radius: 6px; }

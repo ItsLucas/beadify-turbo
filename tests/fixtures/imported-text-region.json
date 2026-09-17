@@ -1,0 +1,114 @@
+{
+  "draft": {
+    "schemaVersion": 1,
+    "kind": "text-analysis",
+    "source": {
+      "rgbaHash": "sha256:1d46541510056a0a4598a3f7d8d7acc278a4c2a2d3d1981ca7288f6fe1412b6f",
+      "width": 256,
+      "height": 128,
+      "analysisWidth": 256,
+      "analysisHeight": 128,
+      "sourceToAnalysis": [
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "analysisToSource": [
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "preprocessingHash": "sha256:d8223321bbf80a214301bb7adc469fc7238f301bb626ddba441b041af0aefab5"
+    },
+    "provider": {
+      "kind": "ocr",
+      "id": "RapidOCR-PP-OCRv6-small",
+      "version": "rapidocr-3.9.2/adapter-v1",
+      "modelHash": "sha256:4497709392f1ff8786a65e884385cb7b6a221039abfb35437d48ca5f88274cc0",
+      "configHash": "sha256:da18fa999dea20715d2f38bc9c53727d822a1e05f03469ef0c1272b44b137c2c",
+      "promptHash": null,
+      "device": "CPUExecutionProvider"
+    },
+    "regions": [
+      {
+        "id": "ocr-000",
+        "parentId": null,
+        "polygon": [
+          [
+            37.0,
+            39.0
+          ],
+          [
+            85.0,
+            39.0
+          ],
+          [
+            85.0,
+            101.0
+          ],
+          [
+            37.0,
+            101.0
+          ]
+        ],
+        "granularity": "line",
+        "role": "text",
+        "status": "unverified",
+        "transcription": "H",
+        "detectionScore": 0.6660604789012518,
+        "recognitionScore": 0.9409,
+        "alignment": "detection",
+        "readingOrder": 0,
+        "angle": 0.0
+      },
+      {
+        "id": "ocr-000-char-000",
+        "parentId": "ocr-000",
+        "polygon": [
+          [
+            38.0,
+            39.0
+          ],
+          [
+            85.0,
+            39.0
+          ],
+          [
+            85.0,
+            101.0
+          ],
+          [
+            38.0,
+            101.0
+          ]
+        ],
+        "granularity": "character",
+        "role": "text",
+        "status": "unverified",
+        "transcription": "H",
+        "detectionScore": null,
+        "recognitionScore": 0.9409,
+        "alignment": "recognition-estimate",
+        "readingOrder": null,
+        "angle": null
+      }
+    ],
+    "suggestions": [],
+    "corrections": [],
+    "evidence": [],
+    "relations": [],
+    "rawOutput": ""
+  }
+}

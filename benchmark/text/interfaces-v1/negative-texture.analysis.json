@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "kind": "text-analysis",
+  "source": {
+    "rgbaHash": "sha256:70b24a8c1599a2941f609768bca215cf14dd89ce3db1c3a2e20c215dd0ff4c8a",
+    "width": 256,
+    "height": 128,
+    "analysisWidth": 256,
+    "analysisHeight": 128,
+    "sourceToAnalysis": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1
+    ],
+    "analysisToSource": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1
+    ],
+    "preprocessingHash": "sha256:40f999c058b829b38a6e1dcbbd904a9073abd0072e0212f7cd685d73ad850e48"
+  },
+  "provider": {
+    "kind": "fixture",
+    "id": "original-text-paths",
+    "version": "text-diagnostics-v1",
+    "modelHash": null,
+    "configHash": "sha256:d8aabd65120ce1f86c156f3447dd807a98ecabd67ab09319e7cd71021fa52163",
+    "promptHash": null,
+    "device": "none"
+  },
+  "regions": [
+    {
+      "id": "negative-texture-region",
+      "parentId": null,
+      "polygon": [
+        [
+          12,
+          8
+        ],
+        [
+          244,
+          8
+        ],
+        [
+          244,
+          120
+        ],
+        [
+          12,
+          120
+        ]
+      ],
+      "granularity": "unknown",
+      "role": "artwork",
+      "status": "verified",
+      "transcription": "",
+      "detectionScore": null,
+      "recognitionScore": null,
+      "alignment": "manual",
+      "readingOrder": 0,
+      "angle": null
+    }
+  ],
+  "evidence": [],
+  "relations": [],
+  "suggestions": [],
+  "corrections": [],
+  "rawOutput": "",
+  "cacheKey": "sha256:db46af04989abfe58ef1ed27ca44a89f3060f76807f989e04a960c92aa3a414f",
+  "contentHash": "sha256:74ce902ef5b315cf491f69b0c54971b67f79b0f0778fd826615666b7539df47a"
+}

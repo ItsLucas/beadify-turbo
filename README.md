@@ -1,275 +1,89 @@
-# Perler Beads Generator
+# beadify-turbo · 拼豆工作台
 
-Live demo: https://jett-wu.github.io/Perler_Beads_Generator/
+基于 [Jett-Wu/Perler_Beads_Generator](https://github.com/Jett-Wu/Perler_Beads_Generator) 的改进 fork，起点为 [`36ac52d`](https://github.com/Jett-Wu/Perler_Beads_Generator/commit/36ac52d570246ab600611a79edd2236bccb954e5)，保留上游 Git 历史与 MIT [LICENSE](LICENSE)。感谢上游提供编辑器、图层、画笔、3D 预览和色卡基础。
 
-一个强大的拼豆图纸编辑器，可以把图片转换成可打印的拼豆图纸，也可以像绘图软件一样手动编辑、分层创作、统计用量并导出高清图纸。
+把图片转换为可编辑、可打印的拼豆图纸。图像采样、结构优化、手工标注和导出均在浏览器完成；服务器只托管网页，原图与项目保存在你的设备上。
 
-![Perler Beads Generator workspace](docs/realistic-workspace.png)
+[改进内容](docs/improvements.md) · [详细使用教程](docs/user-guide.md) · [部署教程](docs/lite-deployment.md) · [下载 0.5.1](https://github.com/ItsLucas/beadify-turbo/releases/tag/v0.5.1) · [使用与素材权利说明](USAGE_RIGHTS.md)
 
-## 功能亮点
+![Beadify Turbo 工作台，使用本仓库原创合成样例](docs/images/workbench.png)
 
-- **图片生成图纸**：按拼豆格区域采样图片，支持卡通 / 写实风格、色数上限、容差和背景处理。
-- **MARD 色卡匹配**：内置 MARD 基础版 221 色与完整版 291 色，支持色号分组、最近使用和快速选色。
-- **专业编辑工具**：画笔、橡皮、填充、消除、换色、吸管、移动、复制、粘贴、镜像、形状和文字工具。
-- **文字 / 数字 / 符号插入**：支持横排、竖排、字号和间距调整，适合制作姓名、编号和装饰文字。
-- **多图层工作流**：支持新建、隐藏、锁定、重命名、复制、拖拽排序、只看当前图层和按图层统计用量。
-- **参考图临摹**：可上传参考图，调整透明度、位置和缩放，用于手动临摹或核对图案。
-- **当前图层调整**：支持亮度、对比度、饱和度、色温、色相、反色、灰阶、黑白、颜色整理和色数上限。
-- **实时 3D 预览**：模拟拼豆完成后的效果，支持放大查看，并跟随圆形 / 方形豆显示模式。
-- **用量统计**：按颜色统计颗数，可设置每包数量，并估算每种颜色所需包数。
-- **高清导出**：支持导出 PNG / PDF 图纸、Excel 用量清单和 JSON 编辑记录。
-- **浏览器本地处理**：图片转换和编辑在浏览器中完成，不需要上传图片到服务器。
+## 我们 Turbo 了什么
 
-## 效果展示
+- **生成更可控：** Worker 与 CLI 共用 CPU 核心；生成进度、取消和过期任务保护；先比较候选，接受后新增图层，一次撤销恢复。
+- **主体与细节：** 裁切、边界去背景、保留/删除画笔、外围白边裁切；主导色与结构优化、多网格位置比较、跨色细线/部件形状/关键颜色证据。
+- **局部重算：** 锁住选区外图纸，设置颜色、空格、细节与色数约束；有原图缓存时支持从原图重算。
+- **保存与导出：** 修复旧 cells 项目恢复，保存色卡快照、主体设置和结构缓存；PNG/SVG/分页 PDF、CSV/JSON BOM、Excel 按最终可见图纸统一计数。
+- **手工文字处理：** 区域/笔画标注、记录导入导出、原字形增强和按原区域重新排字，不调用模型。
+- **便于部署：** 独立静态包、SHA-256 校验、systemd/Nginx 模板；无需 Python、数据库或 GPU。
 
-### 写实风格
+221/291 色卡及基础编辑能力来自上游；本 fork 增加了完整色数设置和新核心约束。逐项对照及质量边界见 [改进说明](docs/improvements.md)。
 
-| 原图 | 工作台 | 导出图纸 |
-| --- | --- | --- |
-| <img src="docs/realistic-source.jpg" alt="写实风格原图" width="150"> | <img src="docs/realistic-workspace.png" alt="写实风格工作台" width="390"> | <img src="docs/realistic-pattern.png" alt="写实风格导出图纸" width="390"> |
+## 快速部署
 
-### 卡通风格
+只需运行时可在 [Releases](https://github.com/ItsLucas/beadify-turbo/releases/tag/v0.5.1) 下载 `beadify-turbo-lite-0.5.1.tar.gz` 和同名 `.sha256`，放在同一目录：
 
-| 原图 | 工作台 | 导出图纸 |
-| --- | --- | --- |
-| <img src="docs/cartoon-source.png" alt="卡通风格原图" width="150"> | <img src="docs/cartoon-workspace.png" alt="卡通风格工作台" width="390"> | <img src="docs/cartoon-pattern.png" alt="卡通风格导出图纸" width="390"> |
+```sh
+sha256sum -c beadify-turbo-lite-0.5.1.tar.gz.sha256
+tar -xzf beadify-turbo-lite-0.5.1.tar.gz
+node web-lite/serve.cjs
+```
 
-### 空白工作区
+打开 `http://服务器IP:8080`。Node 方式需要 **Node.js 22+**，不需要 `npm install`。也可将整个 `web-lite/` 目录交给 Nginx，此时部署机器连 Node 都不需要。包约 1.3 MiB，小规模静态托管可从 1 vCPU / 512 MiB RAM 起步；计算主要消耗访问者设备资源。详细安装、HTTPS/路径说明、常驻服务、性能口径与更新步骤见 [部署教程](docs/lite-deployment.md)。
 
-![Blank workspace](docs/blank-workspace.png)
+从源码运行：
 
-## 本地运行
-
-```bash
-npm install
+```sh
+git clone https://github.com/ItsLucas/beadify-turbo.git
+cd beadify-turbo
+npm ci --ignore-scripts
 npm run dev
 ```
 
-默认预览地址：
+打开 `http://127.0.0.1:5174`。默认监听 `0.0.0.0`；仅本机访问可运行 `BEADIFY_HOST=127.0.0.1 npm run dev`。`npm run dev` 会构建后启动；已有构建用 `npm run preview`。源码修改后重新构建并刷新。
 
-```text
-http://127.0.0.1:5174/
+```sh
+npm run package:lite
+# 兼容的打包命令
+npm run package:web
 ```
 
-## 构建
+产物是 `generated/web-lite/` 和 `generated/beadify-turbo-lite-0.5.1.tar.gz`。必须通过 HTTP(S) 访问，不能双击 HTML 使用 Worker。
 
-```bash
+## 使用
+
+1. 上传 PNG/JPEG/WebP，在主体编辑器拖框裁切。白底图可选择边界去背景，用保留/删除画笔修正眼白、尾巴、链条等区域。
+   外围白边可单独点击“裁切白色边框”：只收紧外侧整行/整列白边，框内背景与白色高光保留，支持容差和撤销。
+2. 设置图纸宽高与色数。基础色卡上限为 221 色，可直接输入或点击“使用全部221色”；切换完整色卡后支持 291 色。该值是可用色数上限，实际用色由图片和算法决定。默认保留原版算法；可切换主导色采样、结构优化、面积或最近邻。原图比例会保留，空余位置透明。
+3. 接受候选后显示新图层，旧图层保留并隐藏；可一次撤销。画笔、填充、擦除等原有编辑工具继续可用。
+4. 结构采样可点“比较网格位置”，查看中心及上下左右五个候选。可在“标记原图细节”框出部件，填写可接受色号和最少保留格数，再用结构优化生成。
+5. “选区重算与保护”中拖框，设置颜色/空格锁、保护细节、简化或特征色。有原图缓存时可选“原图细节重算”，也可“整理当前图纸”；两者都锁定选区外格子。缓存随项目保存，缺原图仍能复用生成时的结构信息；重新裁切或重新采样须选择原文件。
+6. 导出项目 JSON 保存图层、色卡快照、原图设置、结构缓存、文字分析/手工校正和约束。文字分析也可单独导入导出；按原图 RGBA 内容校验，换图后不会错用旧记录。原图文件不嵌入项目；再次选择同一原文件可恢复主体设置，新文件通过内容 hash 区分。容量不足时先保全图纸和编辑内容，先省略可重建的原图细节记录；仍不足时省略文字分析并提示单独导出，当前标注保留在内存。基础文档也无法保存时提示导出 JSON。
+7. PNG/SVG/PDF、CSV/JSON BOM、Excel 与右侧用量都按最终可见图纸计数。隐藏层不计数，重叠位置只取最上层可见豆子。PDF 支持 A4/Letter、分页重叠、镜像和毫米间距；打印时选择100%，核对50毫米校准尺。
+
+结构与细节改进用于“结构优化”，保持硬色数上限。旧项目仍能打开；重新选择原图可建立新的线条和形状证据。
+
+重算规则约束算法，不限制手工画笔；手动改色后可重新设置锁。色卡限制与锁定冲突会报错，需提高色数、放开颜色或调整规则。
+
+图片 ≤20 MiB / 4 MP / 单边4096；解码前先检查图片头尺寸。目标单边 ≤256格。工作台支持 MARD 基础221色及完整291色，RGB是上游近似值，不是实体测量值。已有像素画可选择像素原图模式，绕过去纹理。
+
+## 验证
+
+```sh
+npm test
+npm run typecheck
 npm run build
+npx playwright install chromium
+npm run test:e2e
+npm run test:lite
 ```
 
-构建产物会输出到：
+Linux/Windows 的 CPU 工作流见 [CI](.github/workflows/ci.yml)。可用 `BEADIFY_CHROMIUM=/path/to/chrome` 指定已有浏览器。测试覆盖候选、撤销、主体处理、文字编辑、项目恢复及图纸导出。
 
-```text
-generated/dist/
-```
+## 使用边界
 
-## GitHub Pages 部署
+请使用你拥有权利、得到许可或依法可使用的图片。将图片转换成拼豆图纸不自动获得原作品的版权或商业使用许可；分享图纸、出售成品前需自行确认相应权利。代码的 MIT 许可不覆盖第三方图片、角色、标识、字体或实体色卡数据。详见 [素材权利说明](USAGE_RIGHTS.md) 和 [第三方通知](THIRD_PARTY_NOTICES)。
 
-项目已包含 GitHub Pages 自动部署工作流：
+仓库不提供第三方作品素材库；私人照片及派生结果不进入 Git。项目保存在浏览器中，重要作品请导出项目 JSON，迁移域名/端口前先备份。
 
-```text
-.github/workflows/deploy.yml
-```
-
-部署方式：
-
-1. 推送代码到 `main` 分支。
-2. 打开 GitHub 仓库的 `Settings -> Pages`。
-3. 将 `Build and deployment` 设置为 `GitHub Actions`。
-4. 之后每次推送到 `main` 都会自动构建并部署到 GitHub Pages。
-
-## 文件结构
-
-```text
-.github/workflows/
-  deploy.yml              # GitHub Pages 自动构建和部署
-
-docs/
-  realistic-workspace.png # README 首图，写实风格工作台
-  realistic-pattern.png   # 写实风格导出图纸
-  realistic-source.jpg    # 写实风格原图
-  cartoon-workspace.png   # 卡通风格工作台
-  cartoon-pattern.png     # 卡通风格导出图纸
-  cartoon-source.png      # 卡通风格原图
-  blank-workspace.png     # 空白工作区预览
-
-scripts/
-  clean-dist.cjs          # 清理 generated/dist
-  post-build.cjs          # 拷贝样式和 vendor 文件，修正构建产物引用
-  write-html.cjs          # 写入 GitHub Pages 使用的静态 HTML
-  dev-server.cjs          # 本地静态预览服务
-
-src/
-  App.tsx                 # 应用状态、布局、顶部栏、左右面板和主要交互
-  WorkspaceCanvas.tsx     # 2D 画布、绘制工具、参考图、复制、移动和文字逻辑
-  ThreePreview.tsx        # 3D 拼豆预览
-  imageToBeads.ts         # 图片转拼豆图纸算法
-  palette.ts              # MARD 色卡、色号分组和颜色匹配
-  project.ts              # 项目数据、图层、自动保存和兼容导入
-  exporters.ts            # PNG / PDF 图纸、Excel 用量和 JSON 编辑记录导出
-  usage.ts                # 用量统计和无相邻拼豆检测
-  types.ts                # 共享类型定义
-  styles.css              # 全局样式
-  main.tsx                # React 入口
-
-generated/
-  .gitkeep                # 保留目录；构建产物和本地缓存会被忽略
-
-index.html                # 开发入口 HTML
-package.json              # 项目脚本和依赖
-tsconfig.json             # TypeScript 配置
-tsconfig.build.json       # 构建输出配置
-```
-
-## 技术栈
-
-- React
-- TypeScript
-- Three.js
-- Canvas API
-
-## 说明
-
-- MARD 色卡用于颜色匹配和界面显示，实际拼豆颜色可能受批次、光线和屏幕显示影响。
-- 图片生成图纸时，应用会按每个拼豆格对应的原图区域采样，而不是只读取单个像素。
-- JSON 编辑记录用于恢复可编辑项目，不是通用图片格式。
-- 应用以桌面端使用为主，并针对不同屏幕比例、分辨率和浏览器缩放做了响应式布局处理。
-
----
-
-# Perler Beads Generator
-
-Live demo: https://jett-wu.github.io/Perler_Beads_Generator/
-
-A powerful Perler bead pattern editor for turning images into printable bead charts, with manual editing, layers, reference tracing, usage counting, 3D preview, and high-resolution exports.
-
-![Perler Beads Generator workspace](docs/realistic-workspace.png)
-
-## Highlights
-
-- **Image-to-pattern conversion** with bead-cell area sampling, cartoon / realistic styles, color limits, tolerance, and background handling.
-- **MARD color matching** with built-in Basic 221-color and Complete 291-color palettes, color groups, recent colors, and fast selection.
-- **Editing tools** including pencil, eraser, fill, clear, recolor, eyedropper, move, copy, paste, mirror, shapes, and text.
-- **Text insertion** for letters, numbers, symbols, and Chinese characters, with horizontal / vertical layout, size, and spacing controls.
-- **Layer workflow** with add, hide, lock, rename, duplicate, drag reorder, current-layer-only view, and per-layer usage counting.
-- **Reference image tracing** with opacity, position, drag, and scale controls for manual tracing or visual checking.
-- **Active-layer adjustments** for brightness, contrast, saturation, temperature, hue, invert, grayscale, black-white, color cleanup, and color limits.
-- **Live 3D preview** with an enlarged viewer and round / square bead display modes.
-- **Usage statistics** by color, custom beads-per-pack settings, and estimated packs.
-- **High-resolution exports** for PNG / PDF patterns, Excel usage workbooks, and JSON edit records.
-- **Local browser-side processing**. Images are processed in the browser and are not uploaded to a server.
-
-## Gallery
-
-### Realistic Style
-
-| Source | Workspace | Exported Pattern |
-| --- | --- | --- |
-| <img src="docs/realistic-source.jpg" alt="Realistic source image" width="150"> | <img src="docs/realistic-workspace.png" alt="Realistic style workspace" width="390"> | <img src="docs/realistic-pattern.png" alt="Realistic exported pattern" width="390"> |
-
-### Cartoon Style
-
-| Source | Workspace | Exported Pattern |
-| --- | --- | --- |
-| <img src="docs/cartoon-source.png" alt="Cartoon source image" width="150"> | <img src="docs/cartoon-workspace.png" alt="Cartoon style workspace" width="390"> | <img src="docs/cartoon-pattern.png" alt="Cartoon exported pattern" width="390"> |
-
-### Blank Workspace
-
-![Blank workspace](docs/blank-workspace.png)
-
-## Local Development
-
-```bash
-npm install
-npm run dev
-```
-
-Default preview URL:
-
-```text
-http://127.0.0.1:5174/
-```
-
-## Build
-
-```bash
-npm run build
-```
-
-Build output:
-
-```text
-generated/dist/
-```
-
-## GitHub Pages Deployment
-
-This project includes a GitHub Pages deployment workflow:
-
-```text
-.github/workflows/deploy.yml
-```
-
-Deployment steps:
-
-1. Push to the `main` branch.
-2. Open `Settings -> Pages` in the GitHub repository.
-3. Set `Build and deployment` to `GitHub Actions`.
-4. Every push to `main` will build and deploy the site automatically.
-
-## Project Structure
-
-```text
-.github/workflows/
-  deploy.yml              # GitHub Pages build and deployment workflow
-
-docs/
-  realistic-workspace.png # README hero image, realistic workspace
-  realistic-pattern.png   # Realistic exported pattern
-  realistic-source.jpg    # Realistic source image
-  cartoon-workspace.png   # Cartoon workspace
-  cartoon-pattern.png     # Cartoon exported pattern
-  cartoon-source.png      # Cartoon source image
-  blank-workspace.png     # Blank workspace preview
-
-scripts/
-  clean-dist.cjs          # Cleans generated/dist
-  post-build.cjs          # Copies styles/vendor files and fixes built imports
-  write-html.cjs          # Writes the static HTML used by GitHub Pages
-  dev-server.cjs          # Local static preview server
-
-src/
-  App.tsx                 # App state, layout, panels, and main interactions
-  WorkspaceCanvas.tsx     # 2D editor canvas, tools, reference image, copy/move/text logic
-  ThreePreview.tsx        # 3D bead preview
-  imageToBeads.ts         # Image-to-bead conversion algorithm
-  palette.ts              # MARD palettes, groups, and color matching
-  project.ts              # Project data, layers, autosave, and import compatibility
-  exporters.ts            # PNG / PDF pattern, Excel usage, and JSON export
-  usage.ts                # Usage summary and isolated bead detection
-  types.ts                # Shared TypeScript types
-  styles.css              # Global styles
-  main.tsx                # React entry
-
-generated/
-  .gitkeep                # Keeps the folder; build output and local caches are ignored
-
-index.html                # Development HTML entry
-package.json              # Scripts and dependencies
-tsconfig.json             # TypeScript config
-tsconfig.build.json       # Build output config
-```
-
-## Stack
-
-- React
-- TypeScript
-- Three.js
-- Canvas API
-
-## Notes
-
-- MARD palette colors are used for matching and display. Real bead colors may vary by batch, lighting, and screen calibration.
-- Image conversion samples the image area covered by each bead cell instead of reading only a single pixel.
-- JSON edit records are for restoring editable projects, not for general image exchange.
-- The app is desktop-first and includes responsive layout handling for different screen ratios, resolutions, and browser zoom levels.
+结构优化尚无独立人评证明普遍优于原版，因此保持原版算法为默认。弯曲细线、斜线、眼内留白和复杂文字仍可能失真；真实照片 holdout、其它浏览器/设备及实际打印、实体制作仍需补验。MARD RGB 沿用上游近似值，不是实体测量或品牌认证值。

@@ -16,7 +16,7 @@ fs.copyFileSync(path.join(root, 'node_modules', 'three', 'build', 'three.core.js
 for (const filePath of walk(outSrc)) {
   if (!filePath.endsWith('.js')) continue;
   let source = fs.readFileSync(filePath, 'utf8');
-  source = source.replace(/from "(\.\/[^"]+)"|from '(\.\/[^']+)'/g, (match, doublePath, singlePath) => {
+  source = source.replace(/from "(\.\.?\/[^"]+)"|from '(\.\.?\/[^']+)'/g, (match, doublePath, singlePath) => {
     const importPath = doublePath || singlePath;
     if (/\.(js|json|css)$/.test(importPath)) return match;
     const quote = doublePath ? '"' : "'";
@@ -33,4 +33,13 @@ function walk(dir) {
     else files.push(filePath);
   }
   return files;
+}
+
+const licenses = path.join(dist, 'licenses');
+fs.mkdirSync(licenses, { recursive: true });
+for (const name of ['react', 'react-dom', 'three']) {
+  fs.copyFileSync(path.join(root, 'node_modules', name, 'LICENSE'), path.join(licenses, `${name}.txt`));
+}
+for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES', 'USAGE_RIGHTS.md']) {
+  fs.copyFileSync(path.join(root, name), path.join(dist, name));
 }
