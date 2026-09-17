@@ -4,7 +4,7 @@
 
 把图片转换为可编辑、可打印的拼豆图纸。图像采样、结构优化、手工标注和导出均在浏览器完成；服务器只托管网页，原图与项目保存在你的设备上。
 
-[改进内容](docs/improvements.md) · [详细使用教程](docs/user-guide.md) · [部署教程](docs/lite-deployment.md) · [下载 0.5.1](https://github.com/ItsLucas/beadify-turbo/releases/tag/v0.5.1) · [使用与素材权利说明](USAGE_RIGHTS.md)
+[在线使用](https://itslucas.github.io/beadify-turbo/) · [改进内容](docs/improvements.md) · [详细使用教程](docs/user-guide.md) · [部署教程](docs/lite-deployment.md) · [下载 0.5.1](https://github.com/ItsLucas/beadify-turbo/releases/tag/v0.5.1) · [使用与素材权利说明](USAGE_RIGHTS.md)
 
 ![Beadify Turbo 工作台，使用本仓库原创合成样例](docs/images/workbench.png)
 
@@ -14,12 +14,14 @@
 - **主体与细节：** 裁切、边界去背景、保留/删除画笔、外围白边裁切；主导色与结构优化、多网格位置比较、跨色细线/部件形状/关键颜色证据。
 - **局部重算：** 锁住选区外图纸，设置颜色、空格、细节与色数约束；有原图缓存时支持从原图重算。
 - **保存与导出：** 修复旧 cells 项目恢复，保存色卡快照、主体设置和结构缓存；PNG/SVG/分页 PDF、CSV/JSON BOM、Excel 按最终可见图纸统一计数。
-- **手工文字处理：** 区域/笔画标注、记录导入导出、原字形增强和按原区域重新排字，不调用模型。
+- **手工文字处理：** 区域/笔画标注、记录导入导出、原字形增强和按原区域重新排字。
 - **便于部署：** 独立静态包、SHA-256 校验、systemd/Nginx 模板；无需 Python、数据库或 GPU。
 
 221/291 色卡及基础编辑能力来自上游；本 fork 增加了完整色数设置和新核心约束。逐项对照及质量边界见 [改进说明](docs/improvements.md)。
 
 ## 快速部署
+
+直接打开 [GitHub Pages 工作台](https://itslucas.github.io/beadify-turbo/) 即可使用，无需安装。`main` 更新后由 GitHub Actions 自动构建并发布。
 
 只需运行时可在 [Releases](https://github.com/ItsLucas/beadify-turbo/releases/tag/v0.5.1) 下载 `beadify-turbo-lite-0.5.1.tar.gz` 和同名 `.sha256`，放在同一目录：
 

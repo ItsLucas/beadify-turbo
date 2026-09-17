@@ -1,5 +1,13 @@
 # Beadify Turbo 轻量部署
 
+## GitHub Pages
+
+在线地址：**https://itslucas.github.io/beadify-turbo/**。无需安装，直接在浏览器制图；更换设备或站点前请导出项目 JSON。
+
+本仓库已配置 [Pages 工作流](../.github/workflows/pages.yml)：`main` 更新后自动构建、检查项目子路径下的生成和导出，再发布网页。也可在 Actions 中选择 **Publish GitHub Pages → Run workflow** 手动更新。
+
+部署到自己的 fork 时，在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**，再运行该工作流。默认网址为 `https://用户名.github.io/仓库名/`。构建产物仅通过 Pages 部署，不提交到源码分支。
+
 图案生成、优化、画布与导出在访问者浏览器运行，服务器只提供网页和 Worker 脚本。无需数据库、Python 或 GPU；图片和项目不上传到随包服务器。项目保存在浏览器，切换域名/端口前请导出项目 JSON。
 
 部署包保留主体裁切、手工去背景、细节标记、颜色约束、图层和撤销、手工文字标注与重排，以及项目和 PNG/SVG/PDF/BOM 导出。采用预压缩 gzip、流式输出和 ETag 缓存校验。
@@ -62,7 +70,7 @@ systemctl status beadify-turbo.service
 
 ## 静态托管路径与 HTTPS
 
-将整个目录部署到站点根路径 `/`，保留 `src/`、`vendor/`、许可证和 manifest 的相对结构；当前模板未验证 `/beadify/` 这类子路径托管。域名和 HTTPS 由已有 Nginx、反向代理或静态托管平台配置。网页与 Worker 必须同源，反向代理只需转发静态 GET/HEAD 请求。
+保留 `src/`、`vendor/`、许可证和 manifest 的相对结构。网页可以部署到站点根路径，也支持 Pages 的 `/beadify-turbo/` 项目路径；子路径入口应以 `/` 结尾。域名和 HTTPS 由 Pages、Nginx 或静态托管平台配置。网页与 Worker 必须同源，反向代理只需转发静态 GET/HEAD 请求。
 
 ## 配置与升级
 
